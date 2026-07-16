@@ -20,6 +20,7 @@ type Message = {
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export default function HomePage() {
+  const [mounted, setMounted] = useState(false);
   const [token, setToken] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -32,23 +33,46 @@ export default function HomePage() {
   const [isSending, setIsSending] = useState(false);
   const [apiKeyProvider, setApiKeyProvider] = useState<"gemini" | "groq">("gemini");
   const [apiKeyValue, setApiKeyValue] = useState("");
-  const [apiKeyStatus, setApiKeyStatus] = useState("No key saved in this session");
+  const [apiKeyStatus, setApiKeyStatus] = useState("Configure your API keys");
   const [isSavingApiKey, setIsSavingApiKey] = useState(false);
   const [documentTitle, setDocumentTitle] = useState("");
   const [documentContent, setDocumentContent] = useState("");
   const [documentStatus, setDocumentStatus] = useState("No knowledge uploaded");
   const [isUploadingDocument, setIsUploadingDocument] = useState(false);
 
+  // ChatGPT UI Clone states
+  const [configuredProviders, setConfiguredProviders] = useState<string[]>([]);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [activeSettingsTab, setActiveSettingsTab] = useState<"general" | "keys" | "knowledge">("keys");
+  const [editingConversationId, setEditingConversationId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState("");
+
   const activeConversation = useMemo(
     () => conversations.find((conversation) => conversation.id === activeConversationId),
     [activeConversationId, conversations],
   );
+  
   const statusIsError = /failed|could not|error|invalid|502|503|401|embedding|provider/i.test(status);
+
+  // Set mounted client-side to prevent hydration mismatch errors
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     const savedToken = window.localStorage.getItem("ai-os-token");
     if (savedToken) {
       setToken(savedToken);
+      fetch(`${API_URL}/auth/me`, {
+        headers: { Authorization: `Bearer ${savedToken}` }
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.email) {
+          setEmail(data.email);
+        }
+      })
+      .catch(err => console.error("Could not fetch user profile", err));
     }
   }, []);
 
@@ -63,6 +87,20 @@ export default function HomePage() {
       void loadMessages(token, activeConversationId);
     }
   }, [activeConversationId, token]);
+
+  // Load configured keys checklist status
+  useEffect(() => {
+    if (email) {
+      const saved = localStorage.getItem(`ai-os-keys-${email}`);
+      if (saved) {
+        try {
+          setConfiguredProviders(JSON.parse(saved));
+        } catch (e) {
+          console.error("Failed to parse cached configured keys", e);
+        }
+      }
+    }
+  }, [email]);
 
   async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     const response = await fetch(`${API_URL}${path}`, {
@@ -135,7 +173,7 @@ export default function HomePage() {
     try {
       const conversation = await api<Conversation>("/conversations", {
         method: "POST",
-        body: JSON.stringify({ title: "Planner session" }),
+        body: JSON.stringify({ title: `New session ${conversations.length + 1}` }),
       });
       setConversations((current) => [conversation, ...current]);
       setActiveConversationId(conversation.id);
@@ -146,12 +184,49 @@ export default function HomePage() {
     }
   }
 
-  async function sendMessage(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!activeConversationId || !draft.trim()) {
+  async function deleteConversation(conversationId: string) {
+    setStatus("Deleting conversation");
+    try {
+      await api(`/conversations/${conversationId}`, {
+        method: "DELETE",
+      });
+    } catch (error) {
+      console.warn("Backend conversation deletion failed or unsupported:", error);
+    }
+
+    const remaining = conversations.filter((c) => c.id !== conversationId);
+    setConversations(remaining);
+    if (activeConversationId === conversationId) {
+      setActiveConversationId(remaining[0]?.id ?? null);
+      setMessages([]);
+    }
+    setStatus("Ready");
+  }
+
+  async function renameConversation(conversationId: string, newTitle: string) {
+    if (!newTitle.trim()) return;
+    setStatus("Renaming");
+    try {
+      await api(`/conversations/${conversationId}`, {
+        method: "PUT",
+        body: JSON.stringify({ title: newTitle.trim() }),
+      });
+    } catch (error) {
+      console.warn("Backend rename failed or unsupported:", error);
+    }
+    setConversations((current) =>
+      current.map((c) => (c.id === conversationId ? { ...c, title: newTitle.trim() } : c))
+    );
+    setEditingConversationId(null);
+    setStatus("Ready");
+  }
+
+  async function sendMessage(event?: FormEvent<HTMLFormElement>, textOverride?: string) {
+    if (event) event.preventDefault();
+    const content = textOverride ?? draft.trim();
+    if (!activeConversationId || !content) {
       return;
     }
-    const content = draft.trim();
     setIsSending(true);
     setDraft("");
     setStatus("Planner is working");
@@ -198,7 +273,13 @@ export default function HomePage() {
         body: JSON.stringify({ provider: apiKeyProvider, api_key: apiKeyValue.trim() }),
       });
       setApiKeyValue("");
-      setApiKeyStatus(`${response.provider} key saved`);
+      setApiKeyStatus(`${response.provider.toUpperCase()} API key saved successfully`);
+      
+      const nextProviders = [...new Set([...configuredProviders, apiKeyProvider])];
+      setConfiguredProviders(nextProviders);
+      if (email) {
+        localStorage.setItem(`ai-os-keys-${email}`, JSON.stringify(nextProviders));
+      }
     } catch (error) {
       setApiKeyStatus(error instanceof Error ? error.message : "Could not save key");
     } finally {
@@ -206,15 +287,20 @@ export default function HomePage() {
     }
   }
 
-  async function deleteApiKey() {
+  async function deleteApiKey(providerToDelete: "gemini" | "groq") {
     setIsSavingApiKey(true);
     setApiKeyStatus("Deleting key");
     try {
-      await api(`/users/me/api-keys/${apiKeyProvider}`, {
+      await api(`/users/me/api-keys/${providerToDelete}`, {
         method: "DELETE",
       });
-      setApiKeyValue("");
-      setApiKeyStatus(`${apiKeyProvider} key deleted`);
+      setApiKeyStatus(`${providerToDelete.toUpperCase()} key deleted`);
+      
+      const nextProviders = configuredProviders.filter(p => p !== providerToDelete);
+      setConfiguredProviders(nextProviders);
+      if (email) {
+        localStorage.setItem(`ai-os-keys-${email}`, JSON.stringify(nextProviders));
+      }
     } catch (error) {
       setApiKeyStatus(error instanceof Error ? error.message : "Could not delete key");
     } finally {
@@ -254,12 +340,71 @@ export default function HomePage() {
     setStatus("Signed out");
   }
 
+  // Group conversations by time headers
+  const conversationGroups = useMemo(() => {
+    const groups: { [key: string]: Conversation[] } = {
+      Today: [],
+      Yesterday: [],
+      "Previous 7 Days": [],
+      Older: [],
+    };
+
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const sevenDaysAgo = new Date(today);
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    conversations.forEach((c) => {
+      const cDate = new Date(c.updated_at || c.created_at);
+      if (cDate >= today) {
+        groups.Today.push(c);
+      } else if (cDate >= yesterday) {
+        groups.Yesterday.push(c);
+      } else if (cDate >= sevenDaysAgo) {
+        groups["Previous 7 Days"].push(c);
+      } else {
+        groups.Older.push(c);
+      }
+    });
+
+    return Object.entries(groups).filter(([_, items]) => items.length > 0);
+  }, [conversations]);
+
+  const suggestionCards = [
+    {
+      title: "Plan itinerary",
+      desc: "Design a 3-day history trip to Rome",
+      prompt: "Create a detailed 3-day itinerary exploring historical landmarks in Rome."
+    },
+    {
+      title: "SQL Schema",
+      desc: "Create order schema for e-commerce",
+      prompt: "Design a PostgreSQL schema for an e-commerce catalog with users, products, orders, and review ratings."
+    },
+    {
+      title: "FastAPI tests",
+      desc: "Write pytest for JWT authentication",
+      prompt: "Write clean pytest unit tests for a FastAPI endpoints module using mock users and JWT dependency overrides."
+    },
+    {
+      title: "RAG Specs",
+      desc: "Explain pgvector index parameters",
+      prompt: "Explain the difference between HNSW and IVFFlat vector indexes in PostgreSQL pgvector, detailing pros/cons."
+    }
+  ];
+
+  if (!mounted) return null;
+
   if (!token) {
     return (
       <main className="auth-shell">
         <form className="auth-panel" onSubmit={handleAuth}>
-          <p className="eyebrow">AI OS Phase 1</p>
-          <h1>Sign in to the planner workspace</h1>
+          <div className="brand-badge">Ω</div>
+          <p className="eyebrow">ChatGPT OS Portal</p>
+          <h1>Access workspace</h1>
+          <p className="auth-desc">Universal AI Enterprise Orchestration Workspace</p>
           <label>
             Email
             <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
@@ -277,10 +422,12 @@ export default function HomePage() {
           <div className="auth-actions">
             <button type="submit">{mode === "login" ? "Login" : "Create account"}</button>
             <button type="button" className="ghost" onClick={() => setMode(mode === "login" ? "register" : "login")}>
-              {mode === "login" ? "Register" : "Use login"}
+              {mode === "login" ? "Create Account Instead" : "Sign In Instead"}
             </button>
           </div>
-          <p className="status">{status}</p>
+          {status !== "Ready" && status !== "Signed out" && (
+            <p className={`status ${statusIsError ? "error" : ""}`}>{status}</p>
+          )}
         </form>
       </main>
     );
@@ -288,132 +435,441 @@ export default function HomePage() {
 
   return (
     <main className="workspace">
+      {/* ChatGPT Styled Sidebar */}
       <aside className="sidebar">
-        <div>
-          <p className="eyebrow">AI OS</p>
-          <h1>Planner</h1>
-        </div>
-        <button type="button" onClick={createConversation}>New chat</button>
-        <nav className="conversation-list" aria-label="Conversations">
-          {conversations.map((conversation) => (
-            <button
-              type="button"
-              key={conversation.id}
-              className={conversation.id === activeConversationId ? "active" : ""}
-              onClick={() => setActiveConversationId(conversation.id)}
-            >
-              {conversation.title}
-            </button>
-          ))}
-        </nav>
-        <form className="api-key-panel" onSubmit={saveApiKey}>
-          <div>
-            <p className="eyebrow">API Keys</p>
-            <h2>BYOK</h2>
-          </div>
-          <label>
-            Provider
-            <select
-              value={apiKeyProvider}
-              onChange={(event) => setApiKeyProvider(event.target.value as "gemini" | "groq")}
-              disabled={isSavingApiKey}
-            >
-              <option value="gemini">Gemini</option>
-              <option value="groq">Groq</option>
-            </select>
-          </label>
-          <label>
-            Key
-            <input
-              type="password"
-              value={apiKeyValue}
-              onChange={(event) => setApiKeyValue(event.target.value)}
-              placeholder="Paste API key"
-              autoComplete="off"
-              disabled={isSavingApiKey}
-            />
-          </label>
-          <div className="api-key-actions">
-            <button type="submit" disabled={isSavingApiKey || !apiKeyValue.trim()}>
-              Save
-            </button>
-            <button type="button" className="ghost" onClick={deleteApiKey} disabled={isSavingApiKey}>
-              Delete
-            </button>
-          </div>
-          <p className="status">{apiKeyStatus}</p>
-        </form>
-        <form className="knowledge-panel" onSubmit={uploadDocument}>
-          <div>
-            <p className="eyebrow">Knowledge</p>
-            <h2>Pasted text</h2>
-          </div>
-          <label>
-            Title
-            <input
-              value={documentTitle}
-              onChange={(event) => setDocumentTitle(event.target.value)}
-              placeholder="Project notes"
-              disabled={isUploadingDocument}
-            />
-          </label>
-          <label>
-            Content
-            <textarea
-              value={documentContent}
-              onChange={(event) => setDocumentContent(event.target.value)}
-              placeholder="Paste knowledge..."
-              disabled={isUploadingDocument}
-            />
-          </label>
-          <button type="submit" disabled={isUploadingDocument || !documentTitle.trim() || !documentContent.trim()}>
-            Save knowledge
+        <div className="sidebar-header">
+          <button type="button" className="new-chat-btn" onClick={createConversation}>
+            <span>ChatGPT Clone</span>
+            <span className="plus-icon">📝</span>
           </button>
-          <p className="status">{documentStatus}</p>
-        </form>
-        <button type="button" className="ghost" onClick={logout}>Logout</button>
-      </aside>
-      <section className="chat">
-        <header className="chat-header">
-          <div>
-            <p className="eyebrow">Conversation</p>
-            <h2>{activeConversation?.title ?? "No conversation selected"}</h2>
-          </div>
-          <p className={`status ${statusIsError ? "error" : ""}`}>{status}</p>
-        </header>
-        <div className="messages">
-          {messages.length === 0 && !isSending ? (
-            <div className="empty-state">Create or select a conversation, then ask the planner for help.</div>
+        </div>
+
+        {/* Date Grouped Chat History */}
+        <div className="history-section">
+          {conversations.length === 0 ? (
+            <div className="empty-sidebar-state">No chat sessions yet.</div>
           ) : (
-            <>
-              {messages.map((message) => (
-                <article key={message.id} className={`message ${message.role}`}>
-                  <span>{message.role}</span>
-                  <p>{message.content}</p>
-                  {message.tool_name ? <small>Tool: {message.tool_name}</small> : null}
-                </article>
-              ))}
-              {isSending ? (
-                <article className="message assistant pending">
-                  <span>assistant</span>
-                  <p>Planner is working...</p>
-                </article>
-              ) : null}
-            </>
+            conversationGroups.map(([groupName, items]) => (
+              <div key={groupName} className="history-group">
+                <h4 className="history-group-title">{groupName}</h4>
+                <div className="history-group-list">
+                  {items.map((conversation) => {
+                    const isEditing = editingConversationId === conversation.id;
+                    const isActive = conversation.id === activeConversationId;
+                    return (
+                      <div
+                        key={conversation.id}
+                        className={`conversation-item ${isActive ? "active" : ""}`}
+                      >
+                        {isEditing ? (
+                          <input
+                            type="text"
+                            className="rename-input"
+                            value={editingTitle}
+                            onChange={(e) => setEditingTitle(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                void renameConversation(conversation.id, editingTitle);
+                              } else if (e.key === "Escape") {
+                                setEditingConversationId(null);
+                              }
+                            }}
+                            autoFocus
+                            onBlur={() => void renameConversation(conversation.id, editingTitle)}
+                          />
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              className="conv-select-btn"
+                              onClick={() => setActiveConversationId(conversation.id)}
+                            >
+                              {conversation.title}
+                            </button>
+                            <div className="item-actions">
+                              <button
+                                type="button"
+                                className="action-icon-btn"
+                                title="Rename Chat"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingConversationId(conversation.id);
+                                  setEditingTitle(conversation.title);
+                                }}
+                              >
+                                ✏️
+                              </button>
+                              <button
+                                type="button"
+                                className="action-icon-btn delete"
+                                title="Delete Chat"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void deleteConversation(conversation.id);
+                                }}
+                              >
+                                🗑️
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))
           )}
         </div>
-        <form className="composer" onSubmit={sendMessage}>
-          <textarea
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            placeholder="Ask the planner..."
-            disabled={!activeConversationId || isSending}
-          />
-          <button type="submit" disabled={!activeConversationId || isSending || !draft.trim()}>
-            Send
+
+        {/* Profile / Settings Footer */}
+        <div className="sidebar-footer">
+          <button
+            type="button"
+            className="footer-profile-btn"
+            onClick={() => {
+              setActiveSettingsTab("keys");
+              setIsSettingsOpen(true);
+            }}
+          >
+            <div className="profile-avatar">U</div>
+            <div className="profile-details">
+              <span className="profile-name">{email || "User Profile"}</span>
+              <span className="profile-subtext">Settings & API Keys</span>
+            </div>
           </button>
-        </form>
+          <button type="button" className="ghost logout-btn-sidebar" onClick={logout}>
+            Logout
+          </button>
+        </div>
+      </aside>
+
+      {/* Main viewport */}
+      <section className="main-viewport">
+        <div className="chat">
+          {/* Top Navbar */}
+          <header className="chat-header">
+            <div className="header-left">
+              <span className="model-selector">ChatGPT 4o-mini</span>
+            </div>
+            <div className="header-right">
+              <p className={`status ${statusIsError ? "error" : ""}`}>{status}</p>
+            </div>
+          </header>
+
+          {/* Messages view */}
+          <div className="messages">
+            {messages.length === 0 && !isSending ? (
+              /* Welcome Page */
+              <div className="empty-state">
+                <div className="brand-badge-large">Ω</div>
+                <h2>What can I help with today?</h2>
+                
+                {/* Suggestions Grid */}
+                <div className="suggestions-grid">
+                  {suggestionCards.map((card, idx) => (
+                    <button
+                      type="button"
+                      key={idx}
+                      className="suggestion-card"
+                      onClick={() => {
+                        setDraft(card.prompt);
+                        void sendMessage(undefined, card.prompt);
+                      }}
+                    >
+                      <h5>{card.title}</h5>
+                      <p>{card.desc}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              /* Conversation list */
+              messages.map((message) => {
+                const isUser = message.role === "user";
+                return (
+                  <div key={message.id} className={`message-group ${isUser ? "user-group" : "assistant-group"}`}>
+                    <div className={`message-avatar ${isUser ? "user-avatar" : "assistant-avatar"}`}>
+                      {isUser ? "U" : "Ω"}
+                    </div>
+                    
+                    <div className="message-bubble-wrapper">
+                      <article className="message-bubble">
+                        <span>{isUser ? "You" : "AI Assistant"}</span>
+                        <p>{message.content}</p>
+                        
+                        {message.tool_name && (
+                          <div className="tool-pill">
+                            <span className="tool-icon">🛠️</span>
+                            <span>Used Tool: <code>{message.tool_name}</code></span>
+                          </div>
+                        )}
+                      </article>
+                      
+                      {!isUser && (
+                        <div className="message-actions">
+                          <button
+                            type="button"
+                            className="action-btn"
+                            title="Copy output"
+                            onClick={() => navigator.clipboard.writeText(message.content)}
+                          >
+                            📋 Copy
+                          </button>
+                          <button type="button" className="action-btn" title="Helpful">👍</button>
+                          <button type="button" className="action-btn" title="Not helpful">👎</button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+
+            {isSending && (
+              <div className="message-group assistant-group pending-group">
+                <div className="message-avatar assistant-avatar">Ω</div>
+                <div className="message-bubble-wrapper">
+                  <article className="message-bubble pending-bubble">
+                    <span>AI Assistant</span>
+                    <div className="typing-indicator">
+                      <span></span>
+                      <span></span>
+                      <span></span>
+                    </div>
+                    <p className="pending-text">Planner is executing agent workflow nodes...</p>
+                  </article>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Composer Container */}
+          <form className="composer-container" onSubmit={(e) => void sendMessage(e)}>
+            <div className="composer-box">
+              <textarea
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                placeholder="Message ChatGPT..."
+                disabled={!activeConversationId || isSending}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    e.currentTarget.form?.requestSubmit();
+                  }
+                }}
+              />
+              <div className="composer-actions">
+                <span className="composer-hints">Press Enter to send, Shift+Enter for new line</span>
+                <button
+                  type="submit"
+                  className="send-arrow-btn"
+                  disabled={!activeConversationId || isSending || !draft.trim()}
+                  title="Send message"
+                >
+                  ↑
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
       </section>
+
+      {/* Floating Settings Modal */}
+      {isSettingsOpen && (
+        <div className="modal-backdrop" onClick={() => setIsSettingsOpen(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            {/* Modal Sidebar tabs */}
+            <div className="modal-sidebar">
+              <h3>Settings</h3>
+              <nav className="modal-nav">
+                <button
+                  type="button"
+                  className={`modal-nav-btn ${activeSettingsTab === "keys" ? "active" : ""}`}
+                  onClick={() => setActiveSettingsTab("keys")}
+                >
+                  🔑 API Keys (BYOK)
+                </button>
+                <button
+                  type="button"
+                  className={`modal-nav-btn ${activeSettingsTab === "knowledge" ? "active" : ""}`}
+                  onClick={() => setActiveSettingsTab("knowledge")}
+                >
+                  📚 Knowledge Hub
+                </button>
+                <button
+                  type="button"
+                  className={`modal-nav-btn ${activeSettingsTab === "general" ? "active" : ""}`}
+                  onClick={() => setActiveSettingsTab("general")}
+                >
+                  ⚙️ General Info
+                </button>
+              </nav>
+            </div>
+
+            {/* Modal Content panels */}
+            <div className="modal-body">
+              <button
+                type="button"
+                className="modal-close-btn"
+                onClick={() => setIsSettingsOpen(false)}
+              >
+                ✕
+              </button>
+
+              {/* API Keys Tab */}
+              {activeSettingsTab === "keys" && (
+                <div className="modal-tab-panel">
+                  <h2>API Keys (BYOK)</h2>
+                  <p className="tab-description">
+                    Configure your credentials for model adapters. Your keys are stored encrypted locally.
+                  </p>
+
+                  <div className="settings-layout">
+                    <form className="api-key-panel-modal" onSubmit={saveApiKey}>
+                      <label>
+                        LLM Provider
+                        <select
+                          value={apiKeyProvider}
+                          onChange={(event) => setApiKeyProvider(event.target.value as "gemini" | "groq")}
+                          disabled={isSavingApiKey}
+                        >
+                          <option value="gemini">Google Gemini</option>
+                          <option value="groq">Groq Client</option>
+                        </select>
+                      </label>
+                      <label>
+                        Secret Key
+                        <input
+                          type="password"
+                          value={apiKeyValue}
+                          onChange={(event) => setApiKeyValue(event.target.value)}
+                          placeholder={`Paste ${apiKeyProvider.toUpperCase()} api key`}
+                          autoComplete="off"
+                          disabled={isSavingApiKey}
+                        />
+                      </label>
+                      <div className="actions-row-modal">
+                        <button type="submit" disabled={isSavingApiKey || !apiKeyValue.trim()}>
+                          {isSavingApiKey ? "Saving..." : "Save Key"}
+                        </button>
+                      </div>
+                      {apiKeyStatus !== "Configure your API keys" && (
+                        <p className="status">{apiKeyStatus}</p>
+                      )}
+                    </form>
+
+                    <div className="key-status-list">
+                      <h4>Connection Checklist</h4>
+                      <div className="key-checklist">
+                        <div className="checklist-item">
+                          <div className="provider-status-info">
+                            <span className={`status-dot ${configuredProviders.includes("gemini") ? "active" : ""}`}></span>
+                            <div>
+                              <h5>Google Gemini</h5>
+                              <span>{configuredProviders.includes("gemini") ? "Active" : "Not Found"}</span>
+                            </div>
+                          </div>
+                          {configuredProviders.includes("gemini") && (
+                            <button
+                              type="button"
+                              className="ghost btn-delete-key"
+                              onClick={() => deleteApiKey("gemini")}
+                              disabled={isSavingApiKey}
+                            >
+                              Revoke
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="checklist-item">
+                          <div className="provider-status-info">
+                            <span className={`status-dot ${configuredProviders.includes("groq") ? "active" : ""}`}></span>
+                            <div>
+                              <h5>Groq Client</h5>
+                              <span>{configuredProviders.includes("groq") ? "Active" : "Not Found"}</span>
+                            </div>
+                          </div>
+                          {configuredProviders.includes("groq") && (
+                            <button
+                              type="button"
+                              className="ghost btn-delete-key"
+                              onClick={() => deleteApiKey("groq")}
+                              disabled={isSavingApiKey}
+                            >
+                              Revoke
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Knowledge Hub Tab */}
+              {activeSettingsTab === "knowledge" && (
+                <div className="modal-tab-panel">
+                  <h2>Knowledge Hub (RAG)</h2>
+                  <p className="tab-description">
+                    Upload documents to index into your personal retrieval-augmented memory.
+                  </p>
+                  <form className="knowledge-panel-modal" onSubmit={uploadDocument}>
+                    <label>
+                      Title
+                      <input
+                        value={documentTitle}
+                        onChange={(event) => setDocumentTitle(event.target.value)}
+                        placeholder="Specification notes"
+                        disabled={isUploadingDocument}
+                        required
+                      />
+                    </label>
+                    <label>
+                      Content Body
+                      <textarea
+                        value={documentContent}
+                        onChange={(event) => setDocumentContent(event.target.value)}
+                        placeholder="Paste document reference text here..."
+                        disabled={isUploadingDocument}
+                        required
+                      />
+                    </label>
+                    <button type="submit" disabled={isUploadingDocument || !documentTitle.trim() || !documentContent.trim()}>
+                      {isUploadingDocument ? "Embedding document chunks..." : "Index Document"}
+                    </button>
+                    {documentStatus !== "No knowledge uploaded" && (
+                      <p className="status">{documentStatus}</p>
+                    )}
+                  </form>
+                </div>
+              )}
+
+              {/* General Tab */}
+              {activeSettingsTab === "general" && (
+                <div className="modal-tab-panel">
+                  <h2>General Info</h2>
+                  <p className="tab-description">Workspace configurations and session parameters.</p>
+                  <div className="general-details-list">
+                    <div className="detail-row">
+                      <span>Email Account:</span>
+                      <strong>{email}</strong>
+                    </div>
+                    <div className="detail-row">
+                      <span>Workspace status:</span>
+                      <strong>Active (Cloud Neon Sandbox)</strong>
+                    </div>
+                    <div className="detail-row">
+                      <span>Interface:</span>
+                      <strong>ChatGPT v4 Clone Interface</strong>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
