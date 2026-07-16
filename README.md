@@ -13,7 +13,8 @@ The current foundation rules are intentionally strict:
 - One active LLM provider behind an abstraction layer
 - LangGraph orchestrates Planner, Research, and Knowledge agents
 - JWT auth only
-- No Redis, no queues, no vector DB, no Docker, no observability stack
+- Upstash Redis REST caching for LLM responses and conversation histories
+- No queues, no external vector DB, no Docker, no observability stack
 
 The backend is structured for clean architecture so later agents, retrieval, caching, and external services can be added without a rewrite.
 
