@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user
-from app.api.schemas import ApiKeyMetadataResponse, ApiKeyUpsertRequest
+from app.api.schemas import ApiKeyListResponse, ApiKeyMetadataResponse, ApiKeyUpsertRequest
 from app.auth.api_key_repository import UserApiKeyRepository
 from app.auth.encryption import EncryptionService
 from app.auth.repository import UserRepository
@@ -50,3 +50,14 @@ def delete_api_key(
         next_provider = remaining_keys[0].provider if len(remaining_keys) == 1 else None
         UserRepository(session).set_preferred_provider(current_user.id, next_provider)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/me/api-keys", response_model=ApiKeyListResponse)
+def list_api_keys(
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_db_session)],
+) -> ApiKeyListResponse:
+    keys = UserApiKeyRepository(session).list_for_user(current_user.id)
+    return ApiKeyListResponse(
+        providers=[ApiKeyMetadataResponse(provider=key.provider, created_at=key.created_at) for key in keys]
+    )

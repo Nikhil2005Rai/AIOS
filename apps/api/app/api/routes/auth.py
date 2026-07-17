@@ -38,4 +38,9 @@ def login(payload: LoginRequest, session: Annotated[Session, Depends(get_db_sess
 
 @router.get("/me", response_model=UserResponse)
 def me(current_user: Annotated[User, Depends(get_current_user)]) -> UserResponse:
-    return UserResponse(id=current_user.id, email=current_user.email, created_at=current_user.created_at)
+    return UserResponse(
+        id=current_user.id,
+        email=current_user.email,
+        created_at=current_user.created_at,
+        preferred_provider=current_user.preferred_provider,
+    )
