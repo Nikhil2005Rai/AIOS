@@ -222,3 +222,27 @@ def test_list_documents(
     assert len(res_list) == 1
     assert res_list[0]["title"] == "Doc 1"
     assert res_list[0]["chunk_count"] == 1
+
+
+def test_delete_document(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    db_session: Session,
+) -> None:
+    from app.infrastructure.models import UserModel, DocumentModel, DocumentChunkModel
+    user = db_session.scalar(select(UserModel).where(UserModel.email == "user@example.com"))
+    assert user is not None
+
+    doc1 = DocumentModel(user_id=user.id, title="Doc to delete", source_type="pasted_text")
+    db_session.add(doc1)
+    db_session.flush()
+
+    chunk1 = DocumentChunkModel(document_id=doc1.id, chunk_index=0, content="chunk content", embedding=[0.1]*768)
+    db_session.add(chunk1)
+    db_session.commit()
+
+    response = client.delete(f"/documents/{doc1.id}", headers=auth_headers)
+    assert response.status_code == 204
+
+    assert db_session.scalar(select(DocumentModel).where(DocumentModel.id == doc1.id)) is None
+    assert db_session.scalar(select(DocumentChunkModel).where(DocumentChunkModel.document_id == doc1.id)) is None
