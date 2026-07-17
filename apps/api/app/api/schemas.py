@@ -22,10 +22,15 @@ class UserResponse(BaseModel):
     id: str
     email: str
     created_at: datetime
+    preferred_provider: str | None = None
 
 
 class ConversationCreateRequest(BaseModel):
     title: str = Field(default="New conversation", min_length=1, max_length=160)
+
+
+class ConversationUpdateRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=160)
 
 
 class ConversationResponse(BaseModel):
@@ -60,6 +65,10 @@ class ApiKeyUpsertRequest(BaseModel):
 class ApiKeyMetadataResponse(BaseModel):
     provider: str
     created_at: datetime
+
+
+class ApiKeyListResponse(BaseModel):
+    providers: list[ApiKeyMetadataResponse]
 
 
 class DocumentCreateRequest(BaseModel):

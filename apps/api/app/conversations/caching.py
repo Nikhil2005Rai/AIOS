@@ -26,6 +26,12 @@ class CachingConversationRepository:
     def create(self, user_id: str, title: str) -> Conversation:
         return self.inner.create(user_id=user_id, title=title)
 
+    def delete(self, conversation_id: str, user_id: str) -> bool:
+        return self.inner.delete(conversation_id=conversation_id, user_id=user_id)
+
+    def update_title(self, conversation_id: str, user_id: str, title: str) -> Conversation | None:
+        return self.inner.update_title(conversation_id=conversation_id, user_id=user_id, title=title)
+
     def list_messages(self, conversation_id: str) -> list[Message]:
         cache_key = self._messages_key(conversation_id)
         cached_messages = self._cache_get(cache_key)

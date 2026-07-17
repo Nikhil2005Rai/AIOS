@@ -2,7 +2,7 @@ import json
 from typing import Annotated
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from app.agents.planner import PlannerAgent
@@ -12,6 +12,7 @@ from app.api.schemas import (
     AgentMessageResponse,
     ConversationCreateRequest,
     ConversationResponse,
+    ConversationUpdateRequest,
     MessageCreateRequest,
     MessageResponse,
 )
@@ -115,6 +116,31 @@ def send_message(
         user_message=_message_response(user_message),
         assistant_message=_message_response(assistant_message),
     )
+
+
+@router.delete("/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_conversation(
+    conversation_id: str,
+    current_user: Annotated[User, Depends(get_current_user)],
+    repo: Annotated[ConversationRepository, Depends(get_conversation_repository)],
+) -> Response:
+    deleted = repo.delete(conversation_id=conversation_id, user_id=current_user.id)
+    if not deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.put("/{conversation_id}", response_model=ConversationResponse)
+def update_conversation(
+    conversation_id: str,
+    payload: ConversationUpdateRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    repo: Annotated[ConversationRepository, Depends(get_conversation_repository)],
+) -> ConversationResponse:
+    conversation = repo.update_title(conversation_id=conversation_id, user_id=current_user.id, title=payload.title.strip())
+    if conversation is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+    return _conversation_response(conversation)
 
 
 def _require_conversation(repo: ConversationRepository, conversation_id: str, user_id: str) -> Conversation:

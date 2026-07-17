@@ -33,6 +33,33 @@ class ConversationRepository:
         self.session.refresh(conversation)
         return self._conversation_to_entity(conversation)
 
+    def delete(self, conversation_id: str, user_id: str) -> bool:
+        conversation = self.session.scalar(
+            select(ConversationModel).where(
+                ConversationModel.id == conversation_id,
+                ConversationModel.user_id == user_id,
+            )
+        )
+        if conversation is None:
+            return False
+        self.session.delete(conversation)
+        self.session.commit()
+        return True
+
+    def update_title(self, conversation_id: str, user_id: str, title: str) -> Conversation | None:
+        conversation = self.session.scalar(
+            select(ConversationModel).where(
+                ConversationModel.id == conversation_id,
+                ConversationModel.user_id == user_id,
+            )
+        )
+        if conversation is None:
+            return None
+        conversation.title = title
+        self.session.commit()
+        self.session.refresh(conversation)
+        return self._conversation_to_entity(conversation)
+
     def list_messages(self, conversation_id: str) -> list[Message]:
         messages = self.session.scalars(
             select(MessageModel)
