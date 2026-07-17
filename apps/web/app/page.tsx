@@ -49,6 +49,30 @@ export default function HomePage() {
   const [editingConversationId, setEditingConversationId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
 
+  const [sidebarWidth, setSidebarWidth] = useState(260);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+
+  const startResizing = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = sidebarWidth;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const newWidth = startWidth + (moveEvent.clientX - startX);
+      if (newWidth >= 180 && newWidth <= 450) {
+        setSidebarWidth(newWidth);
+      }
+    };
+
+    const handleMouseUp = () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+  };
+
   const activeConversation = useMemo(
     () => conversations.find((conversation) => conversation.id === activeConversationId),
     [activeConversationId, conversations],
@@ -581,11 +605,36 @@ export default function HomePage() {
   }
 
   return (
-    <main className="workspace">
+    <main
+      className="workspace"
+      style={{
+        gridTemplateColumns: isSidebarCollapsed ? "0px 0px 1fr" : `${sidebarWidth}px 4px 1fr`
+      }}
+    >
       {/* ChatGPT Styled Sidebar */}
-      <aside className="sidebar">
+      <aside
+        className="sidebar"
+        style={{
+          width: isSidebarCollapsed ? "0px" : `${sidebarWidth}px`,
+          opacity: isSidebarCollapsed ? 0 : 1,
+          overflow: "hidden",
+          transition: "opacity 0.15s ease",
+          padding: isSidebarCollapsed ? "0" : undefined,
+          borderRight: isSidebarCollapsed ? "0" : undefined
+        }}
+      >
         <div className="sidebar-header">
-          <div className="sidebar-logo">Archimedes</div>
+          <div className="sidebar-header-row">
+            <div className="sidebar-logo">Archimedes</div>
+            <button
+              type="button"
+              className="sidebar-collapse-btn"
+              title="Collapse Sidebar"
+              onClick={() => setIsSidebarCollapsed(true)}
+            >
+              ◀
+            </button>
+          </div>
           <button type="button" className="new-chat-btn" onClick={createConversation}>
             <span>New Chat</span>
             <span className="plus-icon">+</span>
@@ -692,12 +741,26 @@ export default function HomePage() {
         </div>
       </aside>
 
+      {!isSidebarCollapsed && (
+        <div className="sidebar-resize-handle" onMouseDown={startResizing} />
+      )}
+
       {/* Main viewport */}
       <section className="main-viewport">
         <div className="chat">
           {/* Top Navbar */}
           <header className="chat-header">
             <div className="header-left">
+              {isSidebarCollapsed && (
+                <button
+                  type="button"
+                  className="sidebar-expand-btn"
+                  title="Expand Sidebar"
+                  onClick={() => setIsSidebarCollapsed(false)}
+                >
+                  ☰
+                </button>
+              )}
               <span className="model-selector">{activeModelLabel}</span>
             </div>
             <div className="header-right">
