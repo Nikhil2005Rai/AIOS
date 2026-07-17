@@ -44,6 +44,21 @@ class DocumentRepository:
             created_at=document.created_at,
         )
 
+    def list_for_user(self, user_id: str) -> list[Document]:
+        documents = self.session.scalars(
+            select(DocumentModel).where(DocumentModel.user_id == user_id).order_by(DocumentModel.created_at.desc())
+        ).all()
+        return [
+            Document(
+                id=doc.id,
+                user_id=doc.user_id,
+                title=doc.title,
+                source_type=doc.source_type,
+                created_at=doc.created_at,
+            )
+            for doc in documents
+        ]
+
 
 class RetrievalRepository:
     def __init__(self, session: Session) -> None:

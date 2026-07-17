@@ -1,11 +1,15 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+from sqlalchemy import select
 
 from app.api.dependencies import get_current_user
 from app.api.deps_providers import get_embedding_provider
-from app.api.schemas import DocumentCreateRequest, DocumentJobResponse, DocumentJobStatusResponse
+from app.api.schemas import DocumentCreateRequest, DocumentJobResponse, DocumentJobStatusResponse, DocumentResponse
+from app.db import get_db_session
 from app.domain.entities import User
+from app.infrastructure.models import DocumentModel
 from app.providers.embeddings.base import EmbeddingProvider
 from app.jobs.queue import build_job_queue, JobQueueError
 
@@ -61,3 +65,23 @@ def get_document_job(
     return DocumentJobStatusResponse(
         job_id=job.id, status=job.status.value, result=job.result, error=job.error
     )
+
+
+@router.get("", response_model=list[DocumentResponse])
+def list_documents(
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_db_session)],
+) -> list[DocumentResponse]:
+    documents = session.scalars(
+        select(DocumentModel).where(DocumentModel.user_id == current_user.id).order_by(DocumentModel.created_at.desc())
+    ).all()
+    return [
+        DocumentResponse(
+            id=doc.id,
+            title=doc.title,
+            source_type=doc.source_type,
+            chunk_count=len(doc.chunks),
+            created_at=doc.created_at,
+        )
+        for doc in documents
+    ]

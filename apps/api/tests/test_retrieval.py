@@ -197,3 +197,28 @@ def test_gemini_embedding_provider_sanitizes_http_errors(monkeypatch) -> None:
     assert "HTTP 503 Service Unavailable" in message
     assert "secret-key" not in message
     assert "?key=" not in message
+
+
+def test_list_documents(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    db_session: Session,
+) -> None:
+    from app.infrastructure.models import UserModel, DocumentModel, DocumentChunkModel
+    user = db_session.scalar(select(UserModel).where(UserModel.email == "user@example.com"))
+    assert user is not None
+
+    doc1 = DocumentModel(user_id=user.id, title="Doc 1", source_type="pasted_text")
+    db_session.add(doc1)
+    db_session.flush()
+    
+    chunk1 = DocumentChunkModel(document_id=doc1.id, chunk_index=0, content="chunk", embedding=[0.1]*768)
+    db_session.add(chunk1)
+    db_session.commit()
+
+    response = client.get("/documents", headers=auth_headers)
+    assert response.status_code == 200
+    res_list = response.json()
+    assert len(res_list) == 1
+    assert res_list[0]["title"] == "Doc 1"
+    assert res_list[0]["chunk_count"] == 1
