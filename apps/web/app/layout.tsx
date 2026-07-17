@@ -5,8 +5,8 @@ import "./globals.css";
 
 
 export const metadata: Metadata = {
-    title: "AI OS",
-    description: "Phase 1 AI operating system monolith",
+    title: "Archimedes",
+    description: "Archimedes - Modern AI Assistant Workspace",
 };
 
 
