@@ -138,15 +138,21 @@ def test_send_message_returns_502_when_knowledge_embedding_fails(
 def test_upload_document_then_knowledge_question_returns_grounded_answer(
     client: TestClient,
     auth_headers: dict[str, str],
+    db_session: Session,
 ) -> None:
-    app.dependency_overrides[get_embedding_provider] = lambda: FakeEmbeddingProvider()
+    from app.infrastructure.models import UserModel
+    from app.retrieval.repository import DocumentRepository
 
-    upload = client.post(
-        "/documents",
-        headers=auth_headers,
-        json={"title": "Notes", "content": "alpha beta gamma"},
+    user = db_session.scalar(select(UserModel).where(UserModel.email == "user@example.com"))
+    assert user is not None
+
+    DocumentRepository(db_session).create_with_chunks(
+        user_id=user.id,
+        title="Notes",
+        source_type="pasted_text",
+        chunks=["alpha beta gamma"],
+        embeddings=[[0.1] * 768],
     )
-    assert upload.status_code == 201
 
     app.dependency_overrides[get_llm_provider] = lambda: KnowledgeRoutingProvider()
     app.dependency_overrides[get_retrieval_repository] = lambda: FakeRetrievalRepository()

@@ -14,14 +14,29 @@ from app.providers.embeddings.errors import EmbeddingError
 from app.retrieval.chunking import chunk_text
 
 
-class FakeEmbeddingProvider:
-    def embed(self, texts: list[str]) -> list[list[float]]:
-        return [[0.1] * 768 for _ in texts]
+from app.jobs.queue import JobQueue
 
+class FakeUpstashRedisClient:
+    def __init__(self) -> None:
+        self.db: dict[str, str] = {}
+        self.queues: dict[str, list[str]] = {}
 
-class FailingEmbeddingProvider:
-    def embed(self, texts: list[str]) -> list[list[float]]:
-        raise RuntimeError("Gemini returned 3072 embedding dimensions, expected 768.")
+    def get(self, key: str) -> str | None:
+        return self.db.get(key)
+
+    def set(self, key: str, value: str, ex: int | None = None) -> None:
+        self.db[key] = value
+
+    def rpush(self, key: str, value: str) -> int:
+        if key not in self.queues:
+            self.queues[key] = []
+        self.queues[key].append(value)
+        return len(self.queues[key])
+
+    def lpop(self, key: str) -> str | None:
+        if key not in self.queues or not self.queues[key]:
+            return None
+        return self.queues[key].pop(0)
 
 
 def test_chunk_text_uses_overlap() -> None:
@@ -30,45 +45,84 @@ def test_chunk_text_uses_overlap() -> None:
     assert chunks == ["abcd", "defg", "ghij"]
 
 
-def test_create_document_chunks_embeds_and_persists(
+def test_create_document_enqueues_successfully(
     client: TestClient,
     auth_headers: dict[str, str],
-    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    app.dependency_overrides[get_embedding_provider] = lambda: FakeEmbeddingProvider()
+    fake_queue = JobQueue("http://fake", "fake")
+    fake_queue.client = FakeUpstashRedisClient()
+    monkeypatch.setattr("app.api.routes.documents.build_job_queue", lambda: fake_queue)
+
+    class MockEmbeddingProvider:
+        api_key = "gemini-test-key"
+    app.dependency_overrides[get_embedding_provider] = lambda: MockEmbeddingProvider()
 
     response = client.post(
         "/documents",
         headers=auth_headers,
         json={"title": "Notes", "content": "alpha beta gamma"},
     )
+    assert response.status_code == 202
+    res_data = response.json()
+    assert "job_id" in res_data
+    assert res_data["status"] == "queued"
 
-    assert response.status_code == 201
-    assert response.json()["title"] == "Notes"
-    assert response.json()["chunk_count"] == 1
-
-    document = db_session.scalar(select(DocumentModel).where(DocumentModel.title == "Notes"))
-    assert document is not None
-    chunk = db_session.scalar(select(DocumentChunkModel).where(DocumentChunkModel.document_id == document.id))
-    assert chunk is not None
-    assert chunk.content == "alpha beta gamma"
+    job_id = res_data["job_id"]
+    job_response = client.get(f"/documents/jobs/{job_id}", headers=auth_headers)
+    assert job_response.status_code == 200
+    job_data = job_response.json()
+    assert job_data["job_id"] == job_id
+    assert job_data["status"] == "queued"
+    assert job_data["result"] is None
 
 
-def test_create_document_returns_502_when_embedding_provider_fails(
+def test_create_document_without_redis_returns_503(
     client: TestClient,
     auth_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    app.dependency_overrides[get_embedding_provider] = lambda: FailingEmbeddingProvider()
+    monkeypatch.setattr("app.api.routes.documents.build_job_queue", lambda: None)
+
+    class MockEmbeddingProvider:
+        api_key = "gemini-test-key"
+    app.dependency_overrides[get_embedding_provider] = lambda: MockEmbeddingProvider()
 
     response = client.post(
         "/documents",
         headers=auth_headers,
-        json={"title": "Bad Notes", "content": "alpha beta gamma"},
+        json={"title": "Notes", "content": "alpha beta gamma"},
     )
+    assert response.status_code == 503
+    assert "ingestion requires Redis" in response.json()["detail"]
 
-    assert response.status_code == 502
-    assert "Embedding provider failed" in response.json()["detail"]
-    assert "expected 768" in response.json()["detail"]
+
+def test_get_document_job_returns_404_for_other_user(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_queue = JobQueue("http://fake", "fake")
+    fake_queue.client = FakeUpstashRedisClient()
+    monkeypatch.setattr("app.api.routes.documents.build_job_queue", lambda: fake_queue)
+
+    class MockEmbeddingProvider:
+        api_key = "gemini-test-key"
+    app.dependency_overrides[get_embedding_provider] = lambda: MockEmbeddingProvider()
+
+    response = client.post(
+        "/documents",
+        headers=auth_headers,
+        json={"title": "Notes", "content": "alpha beta gamma"},
+    )
+    job_id = response.json()["job_id"]
+
+    other_register = client.post("/auth/register", json={"email": "other_doc_user@example.com", "password": "password123"})
+    other_token = other_register.json()["access_token"]
+    other_headers = {"Authorization": f"Bearer {other_token}"}
+
+    bad_get = client.get(f"/documents/jobs/{job_id}", headers=other_headers)
+    assert bad_get.status_code == 404
 
 
 def test_embedding_provider_requires_gemini_key_when_active_provider_is_groq(
