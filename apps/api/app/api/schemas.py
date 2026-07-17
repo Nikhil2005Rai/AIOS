@@ -82,3 +82,15 @@ class DocumentResponse(BaseModel):
     source_type: str
     chunk_count: int
     created_at: datetime
+
+
+class DocumentJobResponse(BaseModel):
+    job_id: str
+    status: str
+
+
+class DocumentJobStatusResponse(BaseModel):
+    job_id: str
+    status: str
+    result: dict | None = None
+    error: str | None = None

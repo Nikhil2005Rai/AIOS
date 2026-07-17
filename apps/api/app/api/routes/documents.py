@@ -1,55 +1,64 @@
 from typing import Annotated
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user
 from app.api.deps_providers import get_embedding_provider
-from app.api.schemas import DocumentCreateRequest, DocumentResponse
-from app.db import get_db_session
+from app.api.schemas import DocumentCreateRequest, DocumentJobResponse, DocumentJobStatusResponse
 from app.domain.entities import User
 from app.providers.embeddings.base import EmbeddingProvider
-from app.providers.embeddings.errors import EmbeddingError
-from app.retrieval.chunking import chunk_text
-from app.retrieval.repository import DocumentRepository
-
+from app.jobs.queue import build_job_queue, JobQueueError
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
 
-@router.post("", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=DocumentJobResponse, status_code=status.HTTP_202_ACCEPTED)
 def create_document(
     payload: DocumentCreateRequest,
     current_user: Annotated[User, Depends(get_current_user)],
-    session: Annotated[Session, Depends(get_db_session)],
     embedding_provider: Annotated[EmbeddingProvider, Depends(get_embedding_provider)],
-) -> DocumentResponse:
-    chunks = chunk_text(payload.content)
-    if not chunks:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Document content is empty")
-
-    try:
-        embeddings = embedding_provider.embed(chunks)
-    except httpx.HTTPError as exc:
+) -> DocumentJobResponse:
+    queue = build_job_queue()
+    if queue is None:
         raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Embedding provider failed: upstream request failed.",
-        ) from exc
-    except (EmbeddingError, RuntimeError) as exc:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Embedding provider failed: {exc}") from exc
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Document ingestion requires Redis to be configured (UPSTASH_REDIS_REST_URL/TOKEN).",
+        )
+    api_key = getattr(embedding_provider, "api_key", None)
+    if not api_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Embeddings require a Gemini key; save one in BYOK settings.",
+        )
+    try:
+        job = queue.enqueue(
+            "document_ingestion",
+            {
+                "user_id": current_user.id,
+                "title": payload.title.strip(),
+                "content": payload.content,
+                "api_key": api_key,
+            },
+        )
+    except JobQueueError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    return DocumentJobResponse(job_id=job.id, status=job.status.value)
 
-    document = DocumentRepository(session).create_with_chunks(
-        user_id=current_user.id,
-        title=payload.title.strip(),
-        source_type="pasted_text",
-        chunks=chunks,
-        embeddings=embeddings,
-    )
-    return DocumentResponse(
-        id=document.id,
-        title=document.title,
-        source_type=document.source_type,
-        chunk_count=len(chunks),
-        created_at=document.created_at,
+
+@router.get("/jobs/{job_id}", response_model=DocumentJobStatusResponse)
+def get_document_job(
+    job_id: str,
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> DocumentJobStatusResponse:
+    queue = build_job_queue()
+    if queue is None:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Job queue unavailable.")
+    try:
+        job = queue.get(job_id)
+    except JobQueueError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    if job is None or job.payload.get("user_id") != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+    return DocumentJobStatusResponse(
+        job_id=job.id, status=job.status.value, result=job.result, error=job.error
     )
