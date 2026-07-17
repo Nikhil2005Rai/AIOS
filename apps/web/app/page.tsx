@@ -548,8 +548,8 @@ export default function HomePage() {
     return (
       <main className="auth-shell">
         <form className="auth-panel" onSubmit={handleAuth}>
-          <div className="brand-badge">Ω</div>
-          <p className="eyebrow">ChatGPT OS Portal</p>
+          <div className="brand-badge">A</div>
+          <p className="eyebrow">Archimedes Portal</p>
           <h1>Access workspace</h1>
           <p className="auth-desc">Universal AI Enterprise Orchestration Workspace</p>
           <label>
@@ -585,9 +585,10 @@ export default function HomePage() {
       {/* ChatGPT Styled Sidebar */}
       <aside className="sidebar">
         <div className="sidebar-header">
+          <div className="sidebar-logo">Archimedes</div>
           <button type="button" className="new-chat-btn" onClick={createConversation}>
-            <span>ChatGPT Clone</span>
-            <span className="plus-icon">📝</span>
+            <span>New Chat</span>
+            <span className="plus-icon">+</span>
           </button>
         </div>
 
@@ -679,10 +680,10 @@ export default function HomePage() {
               setIsSettingsOpen(true);
             }}
           >
-            <div className="profile-avatar">U</div>
+            <div className="profile-avatar">👤</div>
             <div className="profile-details">
-              <span className="profile-name">{email || "User Profile"}</span>
-              <span className="profile-subtext">Settings & API Keys</span>
+              <span className="profile-welcome">Welcome back,</span>
+              <span className="profile-name">{email ? email.split('@')[0] : "Guest"}</span>
             </div>
           </button>
           <button type="button" className="ghost logout-btn-sidebar" onClick={logout}>
@@ -700,7 +701,24 @@ export default function HomePage() {
               <span className="model-selector">{activeModelLabel}</span>
             </div>
             <div className="header-right">
-              <p className={`status ${statusIsError ? "error" : ""}`}>{status}</p>
+              {status !== "Ready" && <p className={`status ${statusIsError ? "error" : ""}`}>{status}</p>}
+              <div className="header-tools">
+                <span className="header-warning-icon" title="Archimedes Workspace Alert">⚠️</span>
+                {activeConversationId && (
+                  <button
+                    type="button"
+                    className="header-tool-btn"
+                    title="Delete Chat"
+                    onClick={() => void deleteConversation(activeConversationId)}
+                  >
+                    🗑️
+                  </button>
+                )}
+                <div className="header-search-capsule">
+                  <input type="text" placeholder="Search..." />
+                  <span className="search-icon">🔍</span>
+                </div>
+              </div>
             </div>
           </header>
 
@@ -709,8 +727,8 @@ export default function HomePage() {
             {messages.length === 0 && !isSending ? (
               /* Welcome Page */
               <div className="empty-state">
-                <div className="brand-badge-large">Ω</div>
-                <h2>What can I help with today?</h2>
+                <div className="brand-badge-large">A</div>
+                <h2>How can Archimedes assist you?</h2>
                 
                 {/* Suggestions Grid */}
                 <div className="suggestions-grid">
@@ -743,12 +761,12 @@ export default function HomePage() {
                 return (
                   <div key={message.id} className={`message-group ${isUser ? "user-group" : "assistant-group"}`}>
                     <div className={`message-avatar ${isUser ? "user-avatar" : "assistant-avatar"}`}>
-                      {isUser ? "U" : "Ω"}
+                      {isUser ? "👤" : "🤖"}
                     </div>
                     
                     <div className="message-bubble-wrapper">
                       <article className="message-bubble">
-                        <span>{isUser ? "You" : "AI Assistant"}</span>
+                        <span>{isUser ? "You" : "Archimedes"}</span>
                         <p>{message.content}</p>
                         
                         {message.tool_name && (
@@ -781,10 +799,10 @@ export default function HomePage() {
 
             {isSending && (
               <div className="message-group assistant-group pending-group">
-                <div className="message-avatar assistant-avatar">Ω</div>
+                <div className="message-avatar assistant-avatar">🤖</div>
                 <div className="message-bubble-wrapper">
                   <article className="message-bubble pending-bubble">
-                    <span>AI Assistant</span>
+                    <span>Archimedes</span>
                     <div className="typing-indicator">
                       <span></span>
                       <span></span>
@@ -803,7 +821,7 @@ export default function HomePage() {
               <textarea
                 value={draft}
                 onChange={(event) => setDraft(event.target.value)}
-                placeholder="Message ChatGPT..."
+                placeholder="Type a new message here..."
                 disabled={!activeConversationId || isSending}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
@@ -812,17 +830,21 @@ export default function HomePage() {
                   }
                 }}
               />
-              <div className="composer-actions">
-                <span className="composer-hints">Press Enter to send, Shift+Enter for new line</span>
+              <div className="composer-toolbar-right">
+                <button type="button" className="composer-icon-btn" title="Add attachment">📎</button>
+                <button type="button" className="composer-icon-btn" title="Add emoji">😀</button>
                 <button
                   type="submit"
-                  className="send-arrow-btn"
+                  className="composer-send-btn"
                   disabled={!activeConversationId || isSending || !draft.trim()}
                   title="Send message"
                 >
-                  ↑
+                  ✈️
                 </button>
               </div>
+            </div>
+            <div className="composer-actions">
+              <span className="composer-hints">Press Enter to send, Shift+Enter for new line</span>
             </div>
           </form>
         </div>
@@ -1044,7 +1066,7 @@ export default function HomePage() {
                     </div>
                     <div className="detail-row">
                       <span>Interface:</span>
-                      <strong>ChatGPT v4 Clone Interface</strong>
+                      <strong>Archimedes Workspace Interface</strong>
                     </div>
                   </div>
                 </div>
