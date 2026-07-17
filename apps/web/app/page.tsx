@@ -39,6 +39,7 @@ export default function HomePage() {
   const [documentContent, setDocumentContent] = useState("");
   const [documentStatus, setDocumentStatus] = useState("No knowledge uploaded");
   const [isUploadingDocument, setIsUploadingDocument] = useState(false);
+  const [documents, setDocuments] = useState<{ id: string; title: string; chunk_count: number; created_at: string }[]>([]);
 
   // ChatGPT UI Clone states
   const [configuredProviders, setConfiguredProviders] = useState<string[]>([]);
@@ -114,6 +115,8 @@ export default function HomePage() {
         }
       })
       .catch(err => console.error("Could not fetch api keys", err));
+
+      void loadDocuments(savedToken);
     }
   }, []);
 
@@ -128,6 +131,12 @@ export default function HomePage() {
       void loadMessages(token, activeConversationId);
     }
   }, [activeConversationId, token]);
+
+  useEffect(() => {
+    if (isSettingsOpen && activeSettingsTab === "knowledge" && token) {
+      void loadDocuments(token);
+    }
+  }, [isSettingsOpen, activeSettingsTab, token]);
 
   async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     const response = await fetch(`${API_URL}${path}`, {
@@ -196,8 +205,23 @@ export default function HomePage() {
       })
       .catch(err => console.error("Could not fetch api keys on login", err));
 
+      void loadDocuments(data.access_token);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Authentication failed");
+    }
+  }
+
+  async function loadDocuments(authToken: string) {
+    try {
+      const response = await fetch(`${API_URL}/documents`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setDocuments(data);
+      }
+    } catch (error) {
+      console.error("Could not load documents", error);
     }
   }
 
@@ -420,6 +444,7 @@ export default function HomePage() {
             setDocumentContent("");
             setDocumentStatus(`${res?.title ?? "Document"} saved (${res?.chunk_count ?? 0} chunks)`);
             setIsUploadingDocument(false);
+            void loadDocuments(token as string);
           } else if (job.status === "failed") {
             setDocumentStatus(`Ingestion failed: ${job.error ?? "Unknown error"}`);
             setIsUploadingDocument(false);
@@ -929,34 +954,57 @@ export default function HomePage() {
                   <p className="tab-description">
                     Upload documents to index into your personal retrieval-augmented memory.
                   </p>
-                  <form className="knowledge-panel-modal" onSubmit={uploadDocument}>
-                    <label>
-                      Title
-                      <input
-                        value={documentTitle}
-                        onChange={(event) => setDocumentTitle(event.target.value)}
-                        placeholder="Specification notes"
-                        disabled={isUploadingDocument}
-                        required
-                      />
-                    </label>
-                    <label>
-                      Content Body
-                      <textarea
-                        value={documentContent}
-                        onChange={(event) => setDocumentContent(event.target.value)}
-                        placeholder="Paste document reference text here..."
-                        disabled={isUploadingDocument}
-                        required
-                      />
-                    </label>
-                    <button type="submit" disabled={isUploadingDocument || !documentTitle.trim() || !documentContent.trim()}>
-                      {isUploadingDocument ? "Embedding document chunks..." : "Index Document"}
-                    </button>
-                    {documentStatus !== "No knowledge uploaded" && (
-                      <p className="status">{documentStatus}</p>
-                    )}
-                  </form>
+                  <div className="settings-layout">
+                    <form className="knowledge-panel-modal" onSubmit={uploadDocument}>
+                      <label>
+                        Title
+                        <input
+                          value={documentTitle}
+                          onChange={(event) => setDocumentTitle(event.target.value)}
+                          placeholder="Specification notes"
+                          disabled={isUploadingDocument}
+                          required
+                        />
+                      </label>
+                      <label>
+                        Content Body
+                        <textarea
+                          value={documentContent}
+                          onChange={(event) => setDocumentContent(event.target.value)}
+                          placeholder="Paste document reference text here..."
+                          disabled={isUploadingDocument}
+                          required
+                        />
+                      </label>
+                      <button type="submit" disabled={isUploadingDocument || !documentTitle.trim() || !documentContent.trim()}>
+                        {isUploadingDocument ? "Embedding document chunks..." : "Index Document"}
+                      </button>
+                      {documentStatus !== "No knowledge uploaded" && (
+                        <p className="status">{documentStatus}</p>
+                      )}
+                    </form>
+
+                    <div className="key-status-list">
+                      <h4>Indexed Knowledge Bases</h4>
+                      {documents.length === 0 ? (
+                        <p className="no-keys-hint">No knowledge bases indexed yet.</p>
+                      ) : (
+                        <div className="key-checklist" style={{ maxHeight: "280px", overflowY: "auto" }}>
+                          {documents.map((doc) => (
+                            <div key={doc.id} className="checklist-item">
+                              <div className="provider-status-info">
+                                <span className="status-dot active"></span>
+                                <div>
+                                  <h5>{doc.title}</h5>
+                                  <span>{doc.chunk_count} chunks • {new Date(doc.created_at).toLocaleDateString()}</span>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               )}
 
