@@ -10,13 +10,16 @@ import sqlalchemy as sa
 from pgvector.sqlalchemy import Vector
 
 
+from app.core.config import settings
+
+
 revision = "0006_rag_pgvector"
 down_revision = "0005_users_preferred_provider"
 branch_labels = None
 depends_on = None
 
 
-EMBEDDING_DIMENSIONS = 768
+EMBEDDING_DIMENSIONS = settings.embedding_dimensions
 
 
 def upgrade() -> None:
