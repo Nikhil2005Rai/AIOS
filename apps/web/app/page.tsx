@@ -80,7 +80,13 @@ export default function HomePage() {
       fetch(`${API_URL}/auth/me`, {
         headers: { Authorization: `Bearer ${savedToken}` }
       })
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) {
+          if (res.status === 401) logout();
+          throw new Error("Profile request failed");
+        }
+        return res.json();
+      })
       .then(data => {
         if (data.email) {
           setEmail(data.email);
@@ -94,7 +100,13 @@ export default function HomePage() {
       fetch(`${API_URL}/users/me/api-keys`, {
         headers: { Authorization: `Bearer ${savedToken}` }
       })
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) {
+          if (res.status === 401) logout();
+          throw new Error("API keys request failed");
+        }
+        return res.json();
+      })
       .then(data => {
         if (data.providers) {
           const list = data.providers.map((p: any) => p.provider);
@@ -149,7 +161,13 @@ export default function HomePage() {
       fetch(`${API_URL}/auth/me`, {
         headers: { Authorization: `Bearer ${data.access_token}` }
       })
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) {
+          if (res.status === 401) logout();
+          throw new Error("Profile request failed");
+        }
+        return res.json();
+      })
       .then(dataMe => {
         if (dataMe.email) {
           setEmail(dataMe.email);
@@ -163,7 +181,13 @@ export default function HomePage() {
       fetch(`${API_URL}/users/me/api-keys`, {
         headers: { Authorization: `Bearer ${data.access_token}` }
       })
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) {
+          if (res.status === 401) logout();
+          throw new Error("API keys request failed");
+        }
+        return res.json();
+      })
       .then(dataKeys => {
         if (dataKeys.providers) {
           const list = dataKeys.providers.map((p: any) => p.provider);
