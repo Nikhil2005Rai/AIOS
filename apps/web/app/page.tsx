@@ -84,11 +84,12 @@ export default function HomePage() {
       .then(res => {
         if (!res.ok) {
           if (res.status === 401) logout();
-          throw new Error("Profile request failed");
+          return null;
         }
         return res.json();
       })
       .then(data => {
+        if (!data) return;
         if (data.email) {
           setEmail(data.email);
         }
@@ -104,11 +105,12 @@ export default function HomePage() {
       .then(res => {
         if (!res.ok) {
           if (res.status === 401) logout();
-          throw new Error("API keys request failed");
+          return null;
         }
         return res.json();
       })
       .then(data => {
+        if (!data) return;
         if (data.providers) {
           const list = data.providers.map((p: any) => p.provider);
           setConfiguredProviders(list);
@@ -222,6 +224,17 @@ export default function HomePage() {
       }
     } catch (error) {
       console.error("Could not load documents", error);
+    }
+  }
+
+  async function deleteDocument(docId: string) {
+    try {
+      await api(`/documents/${docId}`, {
+        method: "DELETE",
+      });
+      setDocuments((current) => current.filter((doc) => doc.id !== docId));
+    } catch (error) {
+      console.error("Could not delete document", error);
     }
   }
 
@@ -999,6 +1012,13 @@ export default function HomePage() {
                                   <span>{doc.chunk_count} chunks • {new Date(doc.created_at).toLocaleDateString()}</span>
                                 </div>
                               </div>
+                              <button
+                                type="button"
+                                className="ghost btn-delete-key"
+                                onClick={() => void deleteDocument(doc.id)}
+                              >
+                                Delete
+                              </button>
                             </div>
                           ))}
                         </div>
