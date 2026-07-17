@@ -25,14 +25,25 @@ def _stamp_existing_phase_1_schema(config: Config) -> None:
         tables = set(inspector.get_table_names())
         has_version_table = "alembic_version" in tables
         has_phase_1_schema = {"users", "conversations", "messages"}.issubset(tables)
-        has_tool_calls = "tool_calls" in tables
 
         if has_version_table or not has_phase_1_schema:
             return
 
-        if has_tool_calls:
-            stamp_revision = "head"
-        else:
+        if "tool_calls" not in tables:
             stamp_revision = "0001_initial"
+        else:
+            tool_calls_cols = {c["name"] for c in inspector.get_columns("tool_calls")}
+            if "agent_name" not in tool_calls_cols:
+                stamp_revision = "0002_tool_calls"
+            elif "user_api_keys" not in tables:
+                stamp_revision = "0003_tool_calls_agent_name"
+            else:
+                users_cols = {c["name"] for c in inspector.get_columns("users")}
+                if "preferred_provider" not in users_cols:
+                    stamp_revision = "0004_user_api_keys"
+                elif "documents" not in tables:
+                    stamp_revision = "0005_users_preferred_provider"
+                else:
+                    stamp_revision = "head"
 
     command.stamp(config, stamp_revision)
