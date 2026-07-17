@@ -137,3 +137,28 @@ def test_list_user_api_keys(
     resp_text = list_two.text
     assert "user-key" not in resp_text
     assert "encrypted" not in resp_text
+
+
+def test_decryption_failure_raises_400(
+    db_session: Session,
+    monkeypatch,
+) -> None:
+    import pytest
+    from fastapi import HTTPException
+    user = User(
+        id="user-decrypt-fail",
+        email="fail@example.com",
+        password_hash="hash",
+        created_at=None,
+    )
+    UserApiKeyRepository(db_session).upsert(
+        user_id=user.id,
+        provider="gemini",
+        encrypted_key="corrupted-invalid-token",
+    )
+    
+    with pytest.raises(HTTPException) as exc_info:
+        get_llm_provider(current_user=user, session=db_session)
+    
+    assert exc_info.value.status_code == 400
+    assert "could not be decrypted and needs to be re-saved" in exc_info.value.detail

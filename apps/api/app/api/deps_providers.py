@@ -45,7 +45,14 @@ def _resolve_active_provider(current_user: User, session: Session) -> tuple[str,
         user_key = user_keys[0]
 
     if user_key is not None:
-        return user_key.provider, EncryptionService().decrypt(user_key.encrypted_key)
+        try:
+            decrypted = EncryptionService().decrypt(user_key.encrypted_key)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Your stored {user_key.provider.upper()} API key could not be decrypted and needs to be re-saved.",
+            ) from exc
+        return user_key.provider, decrypted
 
     return settings.llm_provider, settings.llm_api_key
 
@@ -58,7 +65,13 @@ def get_embedding_provider(
     api_key = active_api_key if active_provider == "gemini" else ""
     gemini_key = UserApiKeyRepository(session).get_for_user_provider(current_user.id, "gemini")
     if gemini_key is not None:
-        api_key = EncryptionService().decrypt(gemini_key.encrypted_key)
+        try:
+            api_key = EncryptionService().decrypt(gemini_key.encrypted_key)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Your stored GEMINI API key could not be decrypted and needs to be re-saved.",
+            ) from exc
     elif active_provider != "gemini":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
