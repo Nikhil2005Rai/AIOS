@@ -19,3 +19,24 @@ def test_register_duplicate_login_bad_password_and_me(client: TestClient) -> Non
     me = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
     assert me.status_code == 200
     assert me.json()["email"] == "alice@example.com"
+
+
+def test_me_returns_preferred_provider_after_saving_key(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    before = client.get("/auth/me", headers=auth_headers)
+    assert before.status_code == 200
+    assert before.json()["preferred_provider"] is None
+
+    save = client.post(
+        "/users/me/api-keys",
+        headers=auth_headers,
+        json={"provider": "groq", "api_key": "user-key"},
+    )
+    assert save.status_code == 200
+
+    after = client.get("/auth/me", headers=auth_headers)
+    assert after.status_code == 200
+    assert after.json()["preferred_provider"] == "groq"
+

@@ -193,3 +193,71 @@ def test_send_message_returns_502_when_generation_fails(
     assert "LLM provider failed" in send.json()["detail"]
     assert "MAX_TOKENS" in send.json()["detail"]
 
+
+def test_delete_conversation_cascade_and_security(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    db_session: Session,
+) -> None:
+    from app.infrastructure.models import ConversationModel, MessageModel
+    
+    create = client.post("/conversations", headers=auth_headers, json={"title": "Session to Delete"})
+    assert create.status_code == 201
+    conversation_id = create.json()["id"]
+
+    user_msg = client.post(
+        f"/conversations/{conversation_id}/messages",
+        headers=auth_headers,
+        json={"content": "trigger tool call"},
+    )
+    assert user_msg.status_code == 201
+    
+    messages_before = db_session.scalars(select(MessageModel).where(MessageModel.conversation_id == conversation_id)).all()
+    assert len(messages_before) > 0
+    
+    other_register = client.post("/auth/register", json={"email": "other@example.com", "password": "password123"})
+    other_token = other_register.json()["access_token"]
+    other_headers = {"Authorization": f"Bearer {other_token}"}
+    
+    bad_delete = client.delete(f"/conversations/{conversation_id}", headers=other_headers)
+    assert bad_delete.status_code == 404
+    
+    good_delete = client.delete(f"/conversations/{conversation_id}", headers=auth_headers)
+    assert good_delete.status_code == 204
+    
+    deleted_conv = db_session.get(ConversationModel, conversation_id)
+    assert deleted_conv is None
+    
+    messages_after = db_session.scalars(select(MessageModel).where(MessageModel.conversation_id == conversation_id)).all()
+    assert len(messages_after) == 0
+
+
+def test_rename_conversation(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    db_session: Session,
+) -> None:
+    create = client.post("/conversations", headers=auth_headers, json={"title": "Old Name"})
+    assert create.status_code == 201
+    conversation_id = create.json()["id"]
+    
+    other_register = client.post("/auth/register", json={"email": "other2@example.com", "password": "password123"})
+    other_token = other_register.json()["access_token"]
+    other_headers = {"Authorization": f"Bearer {other_token}"}
+    
+    bad_rename = client.put(f"/conversations/{conversation_id}", headers=other_headers, json={"title": "Hacked Title"})
+    assert bad_rename.status_code == 404
+    
+    invalid_rename = client.put(f"/conversations/{conversation_id}", headers=auth_headers, json={"title": ""})
+    assert invalid_rename.status_code == 422
+    
+    good_rename = client.put(f"/conversations/{conversation_id}", headers=auth_headers, json={"title": "New Title"})
+    assert good_rename.status_code == 200
+    assert good_rename.json()["title"] == "New Title"
+    
+    from app.infrastructure.models import ConversationModel
+    db_conv = db_session.get(ConversationModel, conversation_id)
+    assert db_conv is not None
+    assert db_conv.title == "New Title"
+
+

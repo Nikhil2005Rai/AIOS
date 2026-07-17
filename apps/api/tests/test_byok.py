@@ -50,6 +50,8 @@ def test_llm_provider_prefers_user_key_over_server_key(
     monkeypatch.setattr(settings, "llm_api_key", "server-key")
 
     provider_without_user_key = get_llm_provider(current_user=user, session=db_session)
+    if hasattr(provider_without_user_key, "inner"):
+        provider_without_user_key = getattr(provider_without_user_key, "inner")
     assert provider_without_user_key.api_key == "server-key"
 
     encrypted_key = EncryptionService().encrypt("user-key")
@@ -60,6 +62,8 @@ def test_llm_provider_prefers_user_key_over_server_key(
     )
 
     provider_with_user_key = get_llm_provider(current_user=user, session=db_session)
+    if hasattr(provider_with_user_key, "inner"):
+        provider_with_user_key = getattr(provider_with_user_key, "inner")
     assert provider_with_user_key.api_key == "user-key"
 
 
@@ -85,7 +89,51 @@ def test_llm_provider_uses_single_saved_groq_key_when_server_default_is_gemini(
     )
 
     provider = get_llm_provider(current_user=user, session=db_session)
+    if hasattr(provider, "inner"):
+        provider = getattr(provider, "inner")
 
     assert isinstance(provider, GroqProvider)
     assert provider.api_key == "user-groq-key"
     assert provider.model == "llama-3.1-8b-instant"
+
+
+def test_list_user_api_keys(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    list_empty = client.get("/users/me/api-keys", headers=auth_headers)
+    assert list_empty.status_code == 200
+    assert list_empty.json()["providers"] == []
+
+    save = client.post(
+        "/users/me/api-keys",
+        headers=auth_headers,
+        json={"provider": "gemini", "api_key": "user-key-gemini"},
+    )
+    assert save.status_code == 200
+
+    list_one = client.get("/users/me/api-keys", headers=auth_headers)
+    assert list_one.status_code == 200
+    providers = list_one.json()["providers"]
+    assert len(providers) == 1
+    assert providers[0]["provider"] == "gemini"
+    assert "api_key" not in providers[0]
+    assert "encrypted_key" not in providers[0]
+
+    save_groq = client.post(
+        "/users/me/api-keys",
+        headers=auth_headers,
+        json={"provider": "groq", "api_key": "user-key-groq"},
+    )
+    assert save_groq.status_code == 200
+
+    list_two = client.get("/users/me/api-keys", headers=auth_headers)
+    assert list_two.status_code == 200
+    providers_two = list_two.json()["providers"]
+    assert len(providers_two) == 2
+    providers_names = {p["provider"] for p in providers_two}
+    assert providers_names == {"gemini", "groq"}
+
+    resp_text = list_two.text
+    assert "user-key" not in resp_text
+    assert "encrypted" not in resp_text
