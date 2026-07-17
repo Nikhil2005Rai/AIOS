@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     embedding_dimensions: int = 768
     frontend_origin: str = "http://localhost:3000"
     encryption_key: str = ""
+    worker_poll_interval_seconds: float = 2.0
 
 
 settings = Settings()
