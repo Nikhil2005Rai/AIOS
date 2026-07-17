@@ -103,3 +103,11 @@ def test_gemini_provider_sanitizes_http_errors(monkeypatch) -> None:
     assert "HTTP 503 Service Unavailable" in message
     assert "secret-key" not in message
     assert "?key=" not in message
+
+
+def test_build_provider_unsupported_error_message() -> None:
+    from app.providers.registry import build_provider
+    with pytest.raises(ValueError) as exc_info:
+        build_provider(api_key="key", provider_name="invalid_provider")
+    
+    assert "Unsupported LLM_PROVIDER='invalid_provider'" in str(exc_info.value)

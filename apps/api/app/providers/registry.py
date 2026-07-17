@@ -23,7 +23,7 @@ def build_provider(api_key: str | None = None, provider_name: str | None = None,
     provider_class = PROVIDERS.get(provider_name)
     if provider_class is None:
         supported = ", ".join(sorted(PROVIDERS))
-        raise ValueError(f"Unsupported LLM_PROVIDER={settings.llm_provider!r}. Supported providers: {supported}.")
+        raise ValueError(f"Unsupported LLM_PROVIDER={provider_name!r}. Supported providers: {supported}.")
 
     selected_model = model or settings.llm_model
     if provider_name != settings.llm_provider and model is None:
