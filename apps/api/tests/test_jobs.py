@@ -113,11 +113,24 @@ def test_run_document_ingestion_job(db_session: Session, monkeypatch: pytest.Mon
         lambda: db_session.bind
     )
 
+    from app.infrastructure.models import UserModel
+    from app.auth.api_key_repository import UserApiKeyRepository
+    from app.auth.encryption import EncryptionService
+
+    user = UserModel(id="test-user-id", email="test@example.com", password_hash="hash")
+    db_session.add(user)
+    db_session.commit()
+
+    UserApiKeyRepository(db_session).upsert(
+        user_id="test-user-id",
+        provider="gemini",
+        encrypted_key=EncryptionService().encrypt("fake-api-key")
+    )
+
     payload = {
         "user_id": "test-user-id",
         "title": "Ingested Notes",
         "content": "alpha beta gamma",
-        "api_key": "fake-api-key"
     }
 
     result = run_document_ingestion_job(payload)

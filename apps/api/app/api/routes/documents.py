@@ -37,7 +37,6 @@ def create_document(
                 "user_id": current_user.id,
                 "title": payload.title.strip(),
                 "content": payload.content,
-                "api_key": api_key,
             },
         )
     except JobQueueError as exc:

@@ -69,6 +69,16 @@ def test_create_document_enqueues_successfully(
     assert res_data["status"] == "queued"
 
     job_id = res_data["job_id"]
+    
+    # Dequeue the job and check its payload does not contain api_key
+    job = fake_queue.dequeue("document_ingestion")
+    assert job is not None
+    assert "api_key" not in job.payload
+    assert job.payload["user_id"] is not None
+    
+    # Re-insert so get/status endpoint works
+    fake_queue.client.rpush(f"jobqueue:document_ingestion", job.id)
+    
     job_response = client.get(f"/documents/jobs/{job_id}", headers=auth_headers)
     assert job_response.status_code == 200
     job_data = job_response.json()
