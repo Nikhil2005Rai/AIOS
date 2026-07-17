@@ -1,4 +1,5 @@
 import json
+import logging
 from typing import Annotated
 
 import httpx
@@ -24,6 +25,8 @@ from app.providers.embeddings.errors import EmbeddingError
 from app.retrieval.repository import RetrievalRepository
 from app.tools.repository import ToolCallRepository
 
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 
@@ -85,8 +88,14 @@ def send_message(
         ) from exc
     except LLMGenerationError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"LLM provider failed: {exc}") from exc
-    except (EmbeddingError, RuntimeError) as exc:
+    except EmbeddingError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Embedding provider failed: {exc}") from exc
+    except Exception as exc:
+        logger.exception("An unexpected error occurred during agent execution")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected server error occurred.",
+        ) from exc
 
     assistant_message = repo.add_message(
         conversation_id=conversation_id,

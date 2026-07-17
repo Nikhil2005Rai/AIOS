@@ -38,7 +38,8 @@ class KnowledgeRoutingProvider:
 
 class FailingEmbeddingProvider:
     def embed(self, texts: list[str]) -> list[list[float]]:
-        raise RuntimeError("Gemini returned 3072 embedding dimensions, expected 768.")
+        from app.providers.embeddings.errors import EmbeddingError
+        raise EmbeddingError("Gemini returned 3072 embedding dimensions, expected 768.")
 
 
 class FakeEmbeddingProvider:
@@ -265,5 +266,30 @@ def test_rename_conversation(
     db_conv = db_session.get(ConversationModel, conversation_id)
     assert db_conv is not None
     assert db_conv.title == "New Title"
+
+
+class GenericErrorLLMProvider:
+    def generate(self, messages, tools=None):
+        raise RuntimeError("Something went wrong inside the model call")
+
+
+def test_send_message_returns_500_on_generic_runtime_error(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    app.dependency_overrides[get_llm_provider] = lambda: GenericErrorLLMProvider()
+
+    create = client.post("/conversations", headers=auth_headers, json={"title": "Error session"})
+    conversation_id = create.json()["id"]
+
+    send = client.post(
+        f"/conversations/{conversation_id}/messages",
+        headers=auth_headers,
+        json={"content": "Hello error"},
+    )
+
+    assert send.status_code == 500
+    assert "unexpected server error" in send.json()["detail"]
+
 
 
