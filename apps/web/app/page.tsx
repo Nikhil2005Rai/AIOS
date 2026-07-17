@@ -42,6 +42,7 @@ export default function HomePage() {
 
   // ChatGPT UI Clone states
   const [configuredProviders, setConfiguredProviders] = useState<string[]>([]);
+  const [preferredProvider, setPreferredProvider] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [activeSettingsTab, setActiveSettingsTab] = useState<"general" | "keys" | "knowledge">("keys");
   const [editingConversationId, setEditingConversationId] = useState<string | null>(null);
@@ -53,6 +54,19 @@ export default function HomePage() {
   );
   
   const statusIsError = /failed|could not|error|invalid|502|503|401|embedding|provider/i.test(status);
+
+  // Derive model label client side
+  const activeModelLabel = useMemo(() => {
+    const hasGemini = configuredProviders.includes("gemini");
+    const hasGroq = configuredProviders.includes("groq");
+    const activeProvider = preferredProvider ?? (hasGemini ? "gemini" : hasGroq ? "groq" : null);
+    if (activeProvider === "gemini") {
+      return "Google Gemini (gemini-3.5-flash)";
+    } else if (activeProvider === "groq") {
+      return "Groq Client (llama-3.1-8b-instant)";
+    }
+    return "Default provider";
+  }, [configuredProviders, preferredProvider]);
 
   // Set mounted client-side to prevent hydration mismatch errors
   useEffect(() => {
@@ -71,8 +85,23 @@ export default function HomePage() {
         if (data.email) {
           setEmail(data.email);
         }
+        if (data.preferred_provider) {
+          setPreferredProvider(data.preferred_provider);
+        }
       })
       .catch(err => console.error("Could not fetch user profile", err));
+
+      fetch(`${API_URL}/users/me/api-keys`, {
+        headers: { Authorization: `Bearer ${savedToken}` }
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.providers) {
+          const list = data.providers.map((p: any) => p.provider);
+          setConfiguredProviders(list);
+        }
+      })
+      .catch(err => console.error("Could not fetch api keys", err));
     }
   }, []);
 
@@ -87,20 +116,6 @@ export default function HomePage() {
       void loadMessages(token, activeConversationId);
     }
   }, [activeConversationId, token]);
-
-  // Load configured keys checklist status
-  useEffect(() => {
-    if (email) {
-      const saved = localStorage.getItem(`ai-os-keys-${email}`);
-      if (saved) {
-        try {
-          setConfiguredProviders(JSON.parse(saved));
-        } catch (e) {
-          console.error("Failed to parse cached configured keys", e);
-        }
-      }
-    }
-  }, [email]);
 
   async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     const response = await fetch(`${API_URL}${path}`, {
@@ -130,6 +145,33 @@ export default function HomePage() {
       window.localStorage.setItem("ai-os-token", data.access_token);
       setToken(data.access_token);
       setStatus("Signed in");
+
+      fetch(`${API_URL}/auth/me`, {
+        headers: { Authorization: `Bearer ${data.access_token}` }
+      })
+      .then(res => res.json())
+      .then(dataMe => {
+        if (dataMe.email) {
+          setEmail(dataMe.email);
+        }
+        if (dataMe.preferred_provider) {
+          setPreferredProvider(dataMe.preferred_provider);
+        }
+      })
+      .catch(err => console.error("Could not fetch user profile on login", err));
+
+      fetch(`${API_URL}/users/me/api-keys`, {
+        headers: { Authorization: `Bearer ${data.access_token}` }
+      })
+      .then(res => res.json())
+      .then(dataKeys => {
+        if (dataKeys.providers) {
+          const list = dataKeys.providers.map((p: any) => p.provider);
+          setConfiguredProviders(list);
+        }
+      })
+      .catch(err => console.error("Could not fetch api keys on login", err));
+
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Authentication failed");
     }
@@ -168,7 +210,7 @@ export default function HomePage() {
     }
   }
 
-  async function createConversation() {
+  async function createConversation(): Promise<Conversation | null> {
     setStatus("Creating conversation");
     try {
       const conversation = await api<Conversation>("/conversations", {
@@ -179,8 +221,10 @@ export default function HomePage() {
       setActiveConversationId(conversation.id);
       setMessages([]);
       setStatus("Ready");
+      return conversation;
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Could not create conversation");
+      return null;
     }
   }
 
@@ -190,17 +234,16 @@ export default function HomePage() {
       await api(`/conversations/${conversationId}`, {
         method: "DELETE",
       });
+      const remaining = conversations.filter((c) => c.id !== conversationId);
+      setConversations(remaining);
+      if (activeConversationId === conversationId) {
+        setActiveConversationId(remaining[0]?.id ?? null);
+        setMessages([]);
+      }
+      setStatus("Ready");
     } catch (error) {
-      console.warn("Backend conversation deletion failed or unsupported:", error);
+      setStatus(error instanceof Error ? error.message : "Could not delete conversation");
     }
-
-    const remaining = conversations.filter((c) => c.id !== conversationId);
-    setConversations(remaining);
-    if (activeConversationId === conversationId) {
-      setActiveConversationId(remaining[0]?.id ?? null);
-      setMessages([]);
-    }
-    setStatus("Ready");
   }
 
   async function renameConversation(conversationId: string, newTitle: string) {
@@ -211,20 +254,21 @@ export default function HomePage() {
         method: "PUT",
         body: JSON.stringify({ title: newTitle.trim() }),
       });
+      setConversations((current) =>
+        current.map((c) => (c.id === conversationId ? { ...c, title: newTitle.trim() } : c))
+      );
+      setEditingConversationId(null);
+      setStatus("Ready");
     } catch (error) {
-      console.warn("Backend rename failed or unsupported:", error);
+      setStatus(error instanceof Error ? error.message : "Could not rename conversation");
     }
-    setConversations((current) =>
-      current.map((c) => (c.id === conversationId ? { ...c, title: newTitle.trim() } : c))
-    );
-    setEditingConversationId(null);
-    setStatus("Ready");
   }
 
-  async function sendMessage(event?: FormEvent<HTMLFormElement>, textOverride?: string) {
+  async function sendMessage(event?: FormEvent<HTMLFormElement>, textOverride?: string, conversationIdOverride?: string) {
     if (event) event.preventDefault();
     const content = textOverride ?? draft.trim();
-    if (!activeConversationId || !content) {
+    const targetId = conversationIdOverride ?? activeConversationId;
+    if (!targetId || !content) {
       return;
     }
     setIsSending(true);
@@ -232,13 +276,15 @@ export default function HomePage() {
     setStatus("Planner is working");
     try {
       const response = await api<{ user_message: Message; assistant_message: Message }>(
-        `/conversations/${activeConversationId}/messages`,
+        `/conversations/${targetId}/messages`,
         {
           method: "POST",
           body: JSON.stringify({ content }),
         },
       );
-      setMessages((current) => [...current, response.user_message, response.assistant_message]);
+      if (targetId === activeConversationId || (!activeConversationId && targetId)) {
+        setMessages((current) => [...current, response.user_message, response.assistant_message]);
+      }
       setStatus(response.assistant_message.tool_name ? `Used ${response.assistant_message.tool_name}` : "Ready");
       void loadConversations(token as string);
     } catch (error) {
@@ -277,9 +323,7 @@ export default function HomePage() {
       
       const nextProviders = [...new Set([...configuredProviders, apiKeyProvider])];
       setConfiguredProviders(nextProviders);
-      if (email) {
-        localStorage.setItem(`ai-os-keys-${email}`, JSON.stringify(nextProviders));
-      }
+      setPreferredProvider(apiKeyProvider);
     } catch (error) {
       setApiKeyStatus(error instanceof Error ? error.message : "Could not save key");
     } finally {
@@ -298,9 +342,7 @@ export default function HomePage() {
       
       const nextProviders = configuredProviders.filter(p => p !== providerToDelete);
       setConfiguredProviders(nextProviders);
-      if (email) {
-        localStorage.setItem(`ai-os-keys-${email}`, JSON.stringify(nextProviders));
-      }
+      setPreferredProvider(nextProviders[0] ?? null);
     } catch (error) {
       setApiKeyStatus(error instanceof Error ? error.message : "Could not delete key");
     } finally {
@@ -550,7 +592,7 @@ export default function HomePage() {
           {/* Top Navbar */}
           <header className="chat-header">
             <div className="header-left">
-              <span className="model-selector">ChatGPT 4o-mini</span>
+              <span className="model-selector">{activeModelLabel}</span>
             </div>
             <div className="header-right">
               <p className={`status ${statusIsError ? "error" : ""}`}>{status}</p>
@@ -572,9 +614,15 @@ export default function HomePage() {
                       type="button"
                       key={idx}
                       className="suggestion-card"
-                      onClick={() => {
+                      onClick={async () => {
                         setDraft(card.prompt);
-                        void sendMessage(undefined, card.prompt);
+                        let targetId = activeConversationId;
+                        if (!targetId) {
+                          const newConv = await createConversation();
+                          if (!newConv) return;
+                          targetId = newConv.id;
+                        }
+                        void sendMessage(undefined, card.prompt, targetId);
                       }}
                     >
                       <h5>{card.title}</h5>
