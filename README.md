@@ -14,7 +14,8 @@ The current foundation rules are intentionally strict:
 - LangGraph orchestrates Planner, Research, and Knowledge agents
 - JWT auth only
 - Upstash Redis REST caching for LLM responses and conversation histories
-- No queues, no external vector DB, no Docker, no observability stack
+- Redis-backed job queue for asynchronous document ingestion
+- No external vector DB, no Docker, no observability stack
 
 The backend is structured for clean architecture so later agents, retrieval, caching, and external services can be added without a rewrite.
 
@@ -90,6 +91,14 @@ uvicorn app.main:app --reload
 
 The API also runs `alembic upgrade head` on startup unless `ENVIRONMENT=test`.
 
+Run the background worker:
+
+```powershell
+cd apps/api
+.\.venv\Scripts\Activate.ps1
+python -m app.worker
+```
+
 Run the frontend:
 
 ```powershell
@@ -97,6 +106,9 @@ cd apps/web
 npm install
 npm run dev
 ```
+
+> [!IMPORTANT]
+> `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` are now **required** (not optional) for the document-upload/ingestion feature, as it relies on the Redis-backed job queue. LLM caching remains optional.
 
 Open `http://localhost:3000`, register a user, create a conversation, and send a planner request. The graph can answer directly or route to Research. Tool calls are recorded in `tool_calls`, including the agent that invoked the tool.
 

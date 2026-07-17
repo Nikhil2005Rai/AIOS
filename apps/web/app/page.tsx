@@ -357,18 +357,61 @@ export default function HomePage() {
       return;
     }
     setIsUploadingDocument(true);
-    setDocumentStatus("Embedding knowledge");
+    setDocumentStatus("Queued");
+    
     try {
-      const response = await api<{ title: string; chunk_count: number }>("/documents", {
+      const response = await api<{ job_id: string; status: string }>("/documents", {
         method: "POST",
         body: JSON.stringify({ title: documentTitle.trim(), content: documentContent.trim() }),
       });
-      setDocumentTitle("");
-      setDocumentContent("");
-      setDocumentStatus(`${response.title} saved (${response.chunk_count} chunks)`);
+      
+      const jobId = response.job_id;
+      const startTime = Date.now();
+      const timeoutMs = 120000; // 2 minutes
+      
+      const poll = async () => {
+        if (Date.now() - startTime > timeoutMs) {
+          setDocumentStatus("Ingestion timed out after 2 minutes");
+          setIsUploadingDocument(false);
+          return;
+        }
+        
+        try {
+          const job = await api<{
+            job_id: string;
+            status: string;
+            result: { title: string; chunk_count: number } | null;
+            error: string | null;
+          }>(`/documents/jobs/${jobId}`);
+          
+          if (job.status === "queued") {
+            setDocumentStatus("Queued");
+            setTimeout(poll, 1500);
+          } else if (job.status === "running") {
+            setDocumentStatus("Embedding knowledge");
+            setTimeout(poll, 1500);
+          } else if (job.status === "succeeded") {
+            const res = job.result;
+            setDocumentTitle("");
+            setDocumentContent("");
+            setDocumentStatus(`${res?.title ?? "Document"} saved (${res?.chunk_count ?? 0} chunks)`);
+            setIsUploadingDocument(false);
+          } else if (job.status === "failed") {
+            setDocumentStatus(`Ingestion failed: ${job.error ?? "Unknown error"}`);
+            setIsUploadingDocument(false);
+          } else {
+            setTimeout(poll, 1500);
+          }
+        } catch (pollError) {
+          setDocumentStatus(pollError instanceof Error ? pollError.message : "Polling failed");
+          setIsUploadingDocument(false);
+        }
+      };
+      
+      setTimeout(poll, 1500);
+      
     } catch (error) {
       setDocumentStatus(error instanceof Error ? error.message : "Could not upload knowledge");
-    } finally {
       setIsUploadingDocument(false);
     }
   }
