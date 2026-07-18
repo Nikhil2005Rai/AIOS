@@ -4,6 +4,8 @@ import React, { useEffect } from "react";
 import { useParams } from "next/navigation";
 import { useChat } from "../../chat-context";
 import { User, Bot, Wrench, Copy, ThumbsUp, ThumbsDown } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 export default function ChatSessionPage() {
   const params = useParams();
@@ -37,7 +39,11 @@ export default function ChatSessionPage() {
             <div className="message-bubble-wrapper">
               <article className="message-bubble">
                 <span>{isUser ? "You" : "Archimedes"}</span>
-                <p>{message.content}</p>
+                <div className="message-markdown">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {message.content}
+                  </ReactMarkdown>
+                </div>
                 
                 {message.tool_name && (
                   <div className="tool-pill" style={{ display: "flex", alignItems: "center", gap: 6 }}>

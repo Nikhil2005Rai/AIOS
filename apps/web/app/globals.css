@@ -1629,3 +1629,121 @@ button:disabled {
   margin-left: auto;
 }
 
+/* Markdown Formatting & Rendering Styles inside Message Bubbles */
+.message-markdown {
+  font-size: 0.94rem;
+  line-height: 1.6;
+  color: inherit;
+  width: 100%;
+}
+
+.message-markdown p {
+  margin: 0 0 12px 0;
+}
+
+.message-markdown p:last-child {
+  margin: 0;
+}
+
+.message-markdown strong {
+  font-weight: 700;
+  color: #000000;
+}
+
+.message-markdown em {
+  font-style: italic;
+}
+
+.message-markdown ul,
+.message-markdown ol {
+  margin: 0 0 12px 0;
+  padding-left: 20px;
+}
+
+.message-markdown li {
+  margin-bottom: 4px;
+}
+
+/* Headers */
+.message-markdown h1,
+.message-markdown h2,
+.message-markdown h3,
+.message-markdown h4 {
+  font-weight: 800;
+  color: #000000;
+  margin: 20px 0 10px 0;
+}
+
+.message-markdown h1 { font-size: 1.4rem; }
+.message-markdown h2 { font-size: 1.25rem; }
+.message-markdown h3 { font-size: 1.1rem; }
+.message-markdown h4 { font-size: 1.0rem; }
+
+/* Pre and Code blocks */
+.message-markdown pre {
+  background: #1e1e2e;
+  border: 2px solid #000000;
+  border-radius: 8px;
+  padding: 16px;
+  overflow-x: auto;
+  margin: 12px 0;
+  box-shadow: 3px 3px 0px 0px #000000;
+}
+
+.message-markdown pre code {
+  background: transparent;
+  color: #cdd6f4;
+  padding: 0;
+  border-radius: 0;
+  font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
+  font-size: 0.86rem;
+  box-shadow: none;
+}
+
+.message-markdown code {
+  background: #f1f5f9;
+  color: #0f172a;
+  padding: 3px 6px;
+  border-radius: 4px;
+  font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
+  font-size: 0.86rem;
+  border: 1px solid #cbd5e1;
+}
+
+/* Blockquotes */
+.message-markdown blockquote {
+  border-left: 4px solid var(--accent);
+  padding: 4px 0 4px 16px;
+  margin: 12px 0;
+  color: #64748b;
+  font-style: italic;
+}
+
+/* Tables */
+.message-markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0;
+  border: 2px solid #000000;
+  box-shadow: 4px 4px 0px 0px #000000;
+}
+
+.message-markdown th,
+.message-markdown td {
+  border: 1px solid #000000;
+  padding: 10px 14px;
+  text-align: left;
+  font-size: 0.88rem;
+}
+
+.message-markdown th {
+  background: #f1f5f9;
+  font-weight: 700;
+  color: #000000;
+}
+
+.message-markdown tr:nth-child(even) {
+  background: #f8fafc;
+}
+
+
