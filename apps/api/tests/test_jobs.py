@@ -148,3 +148,41 @@ def test_run_document_ingestion_job(db_session: Session, monkeypatch: pytest.Mon
     assert chunk is not None
     assert chunk.content == "alpha beta gamma"
     assert chunk.embedding == [0.1] * 768
+
+
+def test_run_document_ingestion_job_corrupted_key(db_session: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "app.jobs.document_ingestion.GeminiEmbeddingProvider",
+        FakeEmbeddingProvider
+    )
+    monkeypatch.setattr(
+        "app.jobs.document_ingestion.SessionLocal",
+        lambda: db_session
+    )
+    monkeypatch.setattr(
+        "app.jobs.document_ingestion.get_engine",
+        lambda: db_session.bind
+    )
+
+    from app.infrastructure.models import UserModel
+    from app.auth.api_key_repository import UserApiKeyRepository
+
+    user = UserModel(id="test-user-id-corrupt", email="test-corrupt@example.com", password_hash="hash")
+    db_session.add(user)
+    db_session.commit()
+
+    # Create key record with corrupted payload that fails decryption
+    UserApiKeyRepository(db_session).upsert(
+        user_id="test-user-id-corrupt",
+        provider="gemini",
+        encrypted_key="this-is-corrupted-and-not-valid-fernet"
+    )
+
+    payload = {
+        "user_id": "test-user-id-corrupt",
+        "title": "Ingested Notes",
+        "content": "alpha beta gamma",
+    }
+
+    with pytest.raises(ValueError, match="Stored API key could not be decrypted"):
+        run_document_ingestion_job(payload)

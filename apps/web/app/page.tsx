@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import type { MouseEvent } from "react";
 
 type Conversation = {
   id: string;
@@ -52,12 +53,12 @@ export default function HomePage() {
   const [sidebarWidth, setSidebarWidth] = useState(260);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
-  const startResizing = (e: React.MouseEvent) => {
+  const startResizing = (e: MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
     const startX = e.clientX;
     const startWidth = sidebarWidth;
 
-    const handleMouseMove = (moveEvent: MouseEvent) => {
+    const handleMouseMove = (moveEvent: globalThis.MouseEvent) => {
       const newWidth = startWidth + (moveEvent.clientX - startX);
       if (newWidth >= 180 && newWidth <= 450) {
         setSidebarWidth(newWidth);

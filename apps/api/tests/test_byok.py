@@ -1,9 +1,10 @@
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.auth.api_key_repository import UserApiKeyRepository
 from app.auth.encryption import EncryptionService
-from app.api.deps_providers import get_llm_provider
+from app.api.deps_providers import get_llm_provider, get_embedding_provider
 from app.core.config import settings
 from app.domain.entities import User
 from app.providers.groq import GroqProvider
@@ -162,3 +163,26 @@ def test_decryption_failure_raises_400(
     
     assert exc_info.value.status_code == 400
     assert "could not be decrypted and needs to be re-saved" in exc_info.value.detail
+
+
+def test_embedding_provider_decryption_failure_raises_400(
+    db_session: Session,
+) -> None:
+    from fastapi import HTTPException
+    user = User(
+        id="user-embed-decrypt-fail",
+        email="fail-embed@example.com",
+        password_hash="hash",
+        created_at=None,
+    )
+    UserApiKeyRepository(db_session).upsert(
+        user_id=user.id,
+        provider="gemini",
+        encrypted_key="corrupted-invalid-token",
+    )
+    
+    with pytest.raises(HTTPException) as exc_info:
+        get_embedding_provider(current_user=user, session=db_session)
+    
+    assert exc_info.value.status_code == 400
+    assert "Your stored GEMINI API key could not be decrypted" in exc_info.value.detail

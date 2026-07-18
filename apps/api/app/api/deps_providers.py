@@ -9,6 +9,7 @@ from app.agents.registry import AgentRegistry, build_agent_registry
 from app.api.dependencies import get_current_user
 from app.auth.api_key_repository import UserApiKeyRepository
 from app.auth.encryption import EncryptionService
+from app.auth.gemini_key_resolver import resolve_gemini_api_key
 from app.cache.redis_client import build_redis_cache
 from app.conversations.caching import CachingConversationRepository
 from app.conversations.repository import ConversationRepository
@@ -61,22 +62,18 @@ def get_embedding_provider(
     current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[Session, Depends(get_db_session)],
 ) -> EmbeddingProvider:
-    active_provider, active_api_key = _resolve_active_provider(current_user, session)
-    api_key = active_api_key if active_provider == "gemini" else ""
-    gemini_key = UserApiKeyRepository(session).get_for_user_provider(current_user.id, "gemini")
-    if gemini_key is not None:
-        try:
-            api_key = EncryptionService().decrypt(gemini_key.encrypted_key)
-        except ValueError as exc:
+    try:
+        api_key = resolve_gemini_api_key(session, current_user.id, current_user.preferred_provider)
+    except ValueError as exc:
+        if "could not be decrypted" in str(exc):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Your stored GEMINI API key could not be decrypted and needs to be re-saved.",
             ) from exc
-    elif active_provider != "gemini":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Embeddings require a Gemini key; save one in BYOK settings.",
-        )
+            detail=str(exc),
+        ) from exc
     return GeminiEmbeddingProvider(
         api_key=api_key,
         model=settings.embedding_model,

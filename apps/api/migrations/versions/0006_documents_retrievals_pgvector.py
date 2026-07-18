@@ -10,16 +10,14 @@ import sqlalchemy as sa
 from pgvector.sqlalchemy import Vector
 
 
-from app.core.config import settings
-
-
 revision = "0006_rag_pgvector"
 down_revision = "0005_users_preferred_provider"
 branch_labels = None
 depends_on = None
 
 
-EMBEDDING_DIMENSIONS = settings.embedding_dimensions
+# Hardcoded intentionally — migrations must not depend on runtime config. Changing embedding dimensions later requires a new migration.
+EMBEDDING_DIMENSIONS = 768
 
 
 def upgrade() -> None:
