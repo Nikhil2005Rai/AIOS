@@ -219,17 +219,22 @@ export const ChatProvider = ({ children }: { children: React.ReactNode }) => {
       })
       .then(res => {
         if (!res.ok) {
-          if (res.status === 401) logout();
+          if (res.status === 401) {
+            logout();
+            return null;
+          }
           throw new Error("Profile request failed");
         }
         return res.json();
       })
       .then(dataMe => {
-        if (dataMe.email) {
-          setEmail(dataMe.email);
-        }
-        if (dataMe.preferred_provider) {
-          setPreferredProvider(dataMe.preferred_provider);
+        if (dataMe) {
+          if (dataMe.email) {
+            setEmail(dataMe.email);
+          }
+          if (dataMe.preferred_provider) {
+            setPreferredProvider(dataMe.preferred_provider);
+          }
         }
       })
       .catch(err => console.error("Could not fetch user profile", err));
@@ -240,13 +245,16 @@ export const ChatProvider = ({ children }: { children: React.ReactNode }) => {
       })
       .then(res => {
         if (!res.ok) {
-          if (res.status === 401) logout();
+          if (res.status === 401) {
+            logout();
+            return null;
+          }
           throw new Error("API keys request failed");
         }
         return res.json();
       })
       .then(dataKeys => {
-        if (dataKeys.providers) {
+        if (dataKeys && dataKeys.providers) {
           const list = dataKeys.providers.map((p: any) => p.provider);
           setConfiguredProviders(list);
         }
