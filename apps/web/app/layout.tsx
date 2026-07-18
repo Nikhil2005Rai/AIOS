@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import { ChatProvider } from "./chat-context";
 
 import "./globals.css";
 
@@ -17,7 +18,11 @@ export default function RootLayout({
 }>) {
     return (
         <html lang="en" suppressHydrationWarning>
-            <body suppressHydrationWarning>{children}</body>
+            <body suppressHydrationWarning>
+                <ChatProvider>
+                    {children}
+                </ChatProvider>
+            </body>
         </html>
     );
 }
