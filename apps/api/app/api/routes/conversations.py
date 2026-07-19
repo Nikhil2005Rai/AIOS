@@ -1,16 +1,13 @@
-import json
 import logging
 from typing import Annotated
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from sqlalchemy.orm import Session
 
-from app.agents.planner import PlannerAgent
 from app.api.dependencies import get_current_user
-from app.api.deps_providers import get_conversation_repository, get_planner_agent
+from app.api.deps_providers import get_conversation_repository
 from app.api.schemas import (
-    AgentMessageResponse,
+    AgentJobResponse,
+    AgentJobStatusResponse,
     ConversationCreateRequest,
     ConversationResponse,
     ConversationUpdateRequest,
@@ -18,12 +15,8 @@ from app.api.schemas import (
     MessageResponse,
 )
 from app.conversations.repository import ConversationRepository
-from app.db import get_db_session
 from app.domain.entities import Conversation, Message, User
-from app.providers.base import LLMGenerationError, LLMMessage
-from app.providers.embeddings.errors import EmbeddingError
-from app.retrieval.repository import RetrievalRepository
-from app.tools.repository import ToolCallRepository
+from app.jobs.queue import build_job_queue, JobQueueError
 
 
 logger = logging.getLogger(__name__)
@@ -60,70 +53,71 @@ def list_messages(
     return [_message_response(message) for message in repo.list_messages(conversation_id)]
 
 
-@router.post("/{conversation_id}/messages", response_model=AgentMessageResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/{conversation_id}/messages", response_model=AgentJobResponse, status_code=status.HTTP_202_ACCEPTED)
 def send_message(
     conversation_id: str,
     payload: MessageCreateRequest,
     current_user: Annotated[User, Depends(get_current_user)],
-    session: Annotated[Session, Depends(get_db_session)],
     repo: Annotated[ConversationRepository, Depends(get_conversation_repository)],
-    agent: Annotated[PlannerAgent, Depends(get_planner_agent)],
-) -> AgentMessageResponse:
+) -> AgentJobResponse:
     _require_conversation(repo, conversation_id, current_user.id)
 
     content = payload.content.strip()
     user_message = repo.add_message(conversation_id=conversation_id, role="user", content=content)
-    history = [
-        LLMMessage(role=message.role, content=message.content)
-        for message in repo.list_messages(conversation_id)
-        if message.id != user_message.id
-    ]
 
+    queue = build_job_queue()
+    if queue is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Chat requires Redis to be configured (UPSTASH_REDIS_REST_URL/TOKEN).",
+        )
     try:
-        result = agent.run(user_input=content, history=history)
-    except httpx.HTTPError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="LLM provider failed: upstream request failed.",
-        ) from exc
-    except LLMGenerationError as exc:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"LLM provider failed: {exc}") from exc
-    except EmbeddingError as exc:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Embedding provider failed: {exc}") from exc
-    except Exception as exc:
-        logger.exception("An unexpected error occurred during agent execution")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected server error occurred.",
-        ) from exc
+        job = queue.enqueue(
+            "chat_agent_run",
+            {
+                "conversation_id": conversation_id,
+                "user_id": current_user.id,
+                "user_message_id": user_message.id,
+                "content": content,
+            },
+        )
+    except JobQueueError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
-    assistant_message = repo.add_message(
-        conversation_id=conversation_id,
-        role="assistant",
-        content=result.answer,
-        tool_name=result.tool_name,
-    )
-    if result.tool_name and result.tool_arguments is not None and result.tool_output is not None:
-        ToolCallRepository(session).create(
-            conversation_id=conversation_id,
-            message_id=assistant_message.id,
-            tool_name=result.tool_name,
-            agent_name=result.agent_name or "planner",
-            arguments=json.dumps(result.tool_arguments),
-            output=result.tool_output,
+    return AgentJobResponse(job_id=job.id, status=job.status.value, user_message=_message_response(user_message))
+
+
+@router.get("/{conversation_id}/messages/jobs/{job_id}", response_model=AgentJobStatusResponse)
+def get_message_job(
+    conversation_id: str,
+    job_id: str,
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> AgentJobStatusResponse:
+    queue = build_job_queue()
+    if queue is None:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Job queue unavailable.")
+    try:
+        job = queue.get(job_id)
+    except JobQueueError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    if (
+        job is None
+        or job.payload.get("user_id") != current_user.id
+        or job.payload.get("conversation_id") != conversation_id
+    ):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+
+    assistant_message = None
+    if job.result is not None:
+        assistant_message = MessageResponse(
+            id=job.result["id"],
+            role=job.result["role"],
+            content=job.result["content"],
+            tool_name=job.result.get("tool_name"),
+            created_at=job.result["created_at"],
         )
-    if result.retrieval_query is not None:
-        RetrievalRepository(session).create(
-            conversation_id=conversation_id,
-            message_id=assistant_message.id,
-            agent_name=result.agent_name or "knowledge",
-            query=result.retrieval_query,
-            chunk_ids=result.retrieval_chunk_ids or [],
-            scores=result.retrieval_scores or [],
-        )
-    return AgentMessageResponse(
-        user_message=_message_response(user_message),
-        assistant_message=_message_response(assistant_message),
+    return AgentJobStatusResponse(
+        job_id=job.id, status=job.status.value, assistant_message=assistant_message, error=job.error
     )
 
 

@@ -1,4 +1,5 @@
 from fastapi.testclient import TestClient
+import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -7,6 +8,30 @@ from app.domain.entities import RetrievedChunk
 from app.infrastructure.models import ToolCallModel
 from app.main import app
 from app.providers.base import LLMGenerationError, LLMMessage, LLMResponse, LLMToolCall, ToolSchema
+from app.jobs.entities import JobStatus
+
+
+class FakeUpstashRedisClient:
+    def __init__(self) -> None:
+        self.db: dict[str, str] = {}
+        self.queues: dict[str, list[str]] = {}
+
+    def get(self, key: str) -> str | None:
+        return self.db.get(key)
+
+    def set(self, key: str, value: str, ex: int | None = None) -> None:
+        self.db[key] = value
+
+    def rpush(self, key: str, value: str) -> int:
+        if key not in self.queues:
+            self.queues[key] = []
+        self.queues[key].append(value)
+        return len(self.queues[key])
+
+    def lpop(self, key: str) -> str | None:
+        if key not in self.queues or not self.queues[key]:
+            return None
+        return self.queues[key].pop(0)
 
 
 class ToolCallingProvider:
@@ -58,11 +83,24 @@ class FakeRetrievalRepository:
             )
         ]
 
+    def create(self, *args, **kwargs) -> None:
+        pass
+
 
 def test_create_list_send_message_and_persist_assistant_reply(
     client: TestClient,
     auth_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    db_session: Session,
 ) -> None:
+    from app.jobs.queue import JobQueue
+    from app.jobs.chat_agent import run_chat_agent_job
+    from app.providers.base import LLMResponse
+
+    fake_queue = JobQueue("http://fake", "fake")
+    fake_queue.client = FakeUpstashRedisClient()
+    monkeypatch.setattr("app.api.routes.conversations.build_job_queue", lambda: fake_queue)
+
     create = client.post("/conversations", headers=auth_headers, json={"title": "Planner session"})
     assert create.status_code == 201
     conversation_id = create.json()["id"]
@@ -76,8 +114,36 @@ def test_create_list_send_message_and_persist_assistant_reply(
         headers=auth_headers,
         json={"content": "Hello planner"},
     )
-    assert send.status_code == 201
-    assert send.json()["assistant_message"]["content"] == "Fake assistant reply"
+    assert send.status_code == 202
+    job_id = send.json()["job_id"]
+    assert job_id is not None
+    assert send.json()["user_message"]["content"] == "Hello planner"
+
+    status_response = client.get(f"/conversations/{conversation_id}/messages/jobs/{job_id}", headers=auth_headers)
+    assert status_response.status_code == 200
+    assert status_response.json()["status"] == "queued"
+    assert status_response.json()["assistant_message"] is None
+
+    class FakeAssistantProvider:
+        def generate(self, messages, tools=None):
+            return LLMResponse(content="Fake assistant reply")
+
+    monkeypatch.setattr("app.jobs.chat_agent.build_provider", lambda **kw: FakeAssistantProvider())
+    monkeypatch.setattr("app.jobs.chat_agent.GeminiEmbeddingProvider", lambda **kw: FakeEmbeddingProvider())
+    monkeypatch.setattr("app.jobs.chat_agent.SessionLocal", lambda: db_session)
+    monkeypatch.setattr("app.jobs.chat_agent.get_engine", lambda: db_session.bind)
+
+    job = fake_queue.dequeue("chat_agent_run")
+    assert job is not None
+    assert job.id == job_id
+
+    result = run_chat_agent_job(job.payload)
+    fake_queue.update_status(job.id, JobStatus.SUCCEEDED, result=result)
+
+    status_response = client.get(f"/conversations/{conversation_id}/messages/jobs/{job_id}", headers=auth_headers)
+    assert status_response.status_code == 200
+    assert status_response.json()["status"] == "succeeded"
+    assert status_response.json()["assistant_message"]["content"] == "Fake assistant reply"
 
     messages = client.get(f"/conversations/{conversation_id}/messages", headers=auth_headers)
     assert messages.status_code == 200
@@ -89,9 +155,14 @@ def test_send_message_logs_tool_call_when_provider_requests_tool(
     client: TestClient,
     auth_headers: dict[str, str],
     db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    provider = ToolCallingProvider()
-    app.dependency_overrides[get_llm_provider] = lambda: provider
+    from app.jobs.queue import JobQueue
+    from app.jobs.chat_agent import run_chat_agent_job
+
+    fake_queue = JobQueue("http://fake", "fake")
+    fake_queue.client = FakeUpstashRedisClient()
+    monkeypatch.setattr("app.api.routes.conversations.build_job_queue", lambda: fake_queue)
 
     create = client.post("/conversations", headers=auth_headers, json={"title": "Tool session"})
     conversation_id = create.json()["id"]
@@ -101,15 +172,24 @@ def test_send_message_logs_tool_call_when_provider_requests_tool(
         headers=auth_headers,
         json={"content": "What time is it?"},
     )
+    assert send.status_code == 202
+    job_id = send.json()["job_id"]
 
-    assert send.status_code == 201
-    assistant_message = send.json()["assistant_message"]
-    assert assistant_message["tool_name"] == "current_time"
+    provider = ToolCallingProvider()
+    monkeypatch.setattr("app.jobs.chat_agent.build_provider", lambda **kw: provider)
+    monkeypatch.setattr("app.jobs.chat_agent.GeminiEmbeddingProvider", lambda **kw: FakeEmbeddingProvider())
+    monkeypatch.setattr("app.jobs.chat_agent.SessionLocal", lambda: db_session)
+    monkeypatch.setattr("app.jobs.chat_agent.get_engine", lambda: db_session.bind)
+
+    job = fake_queue.dequeue("chat_agent_run")
+    assert job is not None
+    result = run_chat_agent_job(job.payload)
+    fake_queue.update_status(job.id, JobStatus.SUCCEEDED, result=result)
 
     tool_call = db_session.scalar(select(ToolCallModel).where(ToolCallModel.tool_name == "current_time"))
     assert tool_call is not None
     assert tool_call.conversation_id == conversation_id
-    assert tool_call.message_id == assistant_message["id"]
+    assert tool_call.message_id == result["id"]
     assert tool_call.agent_name == "research"
     assert tool_call.arguments == "{}"
     assert "Current local time is" in tool_call.output
@@ -118,9 +198,15 @@ def test_send_message_logs_tool_call_when_provider_requests_tool(
 def test_send_message_returns_502_when_knowledge_embedding_fails(
     client: TestClient,
     auth_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    db_session: Session,
 ) -> None:
-    app.dependency_overrides[get_llm_provider] = lambda: KnowledgeRoutingProvider()
-    app.dependency_overrides[get_embedding_provider] = lambda: FailingEmbeddingProvider()
+    from app.jobs.queue import JobQueue
+    from app.jobs.chat_agent import run_chat_agent_job
+
+    fake_queue = JobQueue("http://fake", "fake")
+    fake_queue.client = FakeUpstashRedisClient()
+    monkeypatch.setattr("app.api.routes.conversations.build_job_queue", lambda: fake_queue)
 
     create = client.post("/conversations", headers=auth_headers, json={"title": "Knowledge session"})
     conversation_id = create.json()["id"]
@@ -130,19 +216,38 @@ def test_send_message_returns_502_when_knowledge_embedding_fails(
         headers=auth_headers,
         json={"content": "Using my uploaded knowledge, answer this."},
     )
+    assert send.status_code == 202
+    job_id = send.json()["job_id"]
 
-    assert send.status_code == 502
-    assert "Embedding provider failed" in send.json()["detail"]
-    assert "expected 768" in send.json()["detail"]
+    monkeypatch.setattr("app.jobs.chat_agent.build_provider", lambda **kw: KnowledgeRoutingProvider())
+    monkeypatch.setattr("app.jobs.chat_agent.GeminiEmbeddingProvider", lambda **kw: FailingEmbeddingProvider())
+    monkeypatch.setattr("app.jobs.chat_agent.SessionLocal", lambda: db_session)
+    monkeypatch.setattr("app.jobs.chat_agent.get_engine", lambda: db_session.bind)
+
+    job = fake_queue.dequeue("chat_agent_run")
+    assert job is not None
+
+    with pytest.raises(ValueError) as excinfo:
+        run_chat_agent_job(job.payload)
+    
+    assert "Embedding provider failed" in str(excinfo.value)
+    assert "expected 768" in str(excinfo.value)
 
 
 def test_upload_document_then_knowledge_question_returns_grounded_answer(
     client: TestClient,
     auth_headers: dict[str, str],
     db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from app.infrastructure.models import UserModel
     from app.retrieval.repository import DocumentRepository
+    from app.jobs.queue import JobQueue
+    from app.jobs.chat_agent import run_chat_agent_job
+
+    fake_queue = JobQueue("http://fake", "fake")
+    fake_queue.client = FakeUpstashRedisClient()
+    monkeypatch.setattr("app.api.routes.conversations.build_job_queue", lambda: fake_queue)
 
     user = db_session.scalar(select(UserModel).where(UserModel.email == "user@example.com"))
     assert user is not None
@@ -155,19 +260,31 @@ def test_upload_document_then_knowledge_question_returns_grounded_answer(
         embeddings=[[0.1] * 768],
     )
 
-    app.dependency_overrides[get_llm_provider] = lambda: KnowledgeRoutingProvider()
-    app.dependency_overrides[get_retrieval_repository] = lambda: FakeRetrievalRepository()
+    monkeypatch.setattr("app.jobs.chat_agent.build_provider", lambda **kw: KnowledgeRoutingProvider())
+    monkeypatch.setattr("app.jobs.chat_agent.GeminiEmbeddingProvider", lambda **kw: FakeEmbeddingProvider())
+    monkeypatch.setattr("app.jobs.chat_agent.RetrievalRepository", lambda sess: FakeRetrievalRepository())
+    monkeypatch.setattr("app.jobs.chat_agent.SessionLocal", lambda: db_session)
+    monkeypatch.setattr("app.jobs.chat_agent.get_engine", lambda: db_session.bind)
 
     create = client.post("/conversations", headers=auth_headers, json={"title": "Knowledge session"})
     conversation_id = create.json()["id"]
+
     send = client.post(
         f"/conversations/{conversation_id}/messages",
         headers=auth_headers,
         json={"content": "Using my uploaded knowledge, answer this."},
     )
+    assert send.status_code == 202
+    job_id = send.json()["job_id"]
 
-    assert send.status_code == 201
-    assert send.json()["assistant_message"]["content"] == "Grounded answer from uploaded notes."
+    job = fake_queue.dequeue("chat_agent_run")
+    assert job is not None
+    result = run_chat_agent_job(job.payload)
+    fake_queue.update_status(job.id, JobStatus.SUCCEEDED, result=result)
+
+    status_response = client.get(f"/conversations/{conversation_id}/messages/jobs/{job_id}", headers=auth_headers)
+    assert status_response.status_code == 200
+    assert status_response.json()["assistant_message"]["content"] == "Grounded answer from uploaded notes."
 
 
 class GenerationFailingProvider:
@@ -184,8 +301,15 @@ class GenerationFailingProvider:
 def test_send_message_returns_502_when_generation_fails(
     client: TestClient,
     auth_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    db_session: Session,
 ) -> None:
-    app.dependency_overrides[get_llm_provider] = lambda: GenerationFailingProvider()
+    from app.jobs.queue import JobQueue
+    from app.jobs.chat_agent import run_chat_agent_job
+
+    fake_queue = JobQueue("http://fake", "fake")
+    fake_queue.client = FakeUpstashRedisClient()
+    monkeypatch.setattr("app.api.routes.conversations.build_job_queue", lambda: fake_queue)
 
     create = client.post("/conversations", headers=auth_headers, json={"title": "Research session"})
     conversation_id = create.json()["id"]
@@ -195,10 +319,22 @@ def test_send_message_returns_502_when_generation_fails(
         headers=auth_headers,
         json={"content": "What is the time?"},
     )
+    assert send.status_code == 202
+    job_id = send.json()["job_id"]
 
-    assert send.status_code == 502
-    assert "LLM provider failed" in send.json()["detail"]
-    assert "MAX_TOKENS" in send.json()["detail"]
+    monkeypatch.setattr("app.jobs.chat_agent.build_provider", lambda **kw: GenerationFailingProvider())
+    monkeypatch.setattr("app.jobs.chat_agent.GeminiEmbeddingProvider", lambda **kw: FakeEmbeddingProvider())
+    monkeypatch.setattr("app.jobs.chat_agent.SessionLocal", lambda: db_session)
+    monkeypatch.setattr("app.jobs.chat_agent.get_engine", lambda: db_session.bind)
+
+    job = fake_queue.dequeue("chat_agent_run")
+    assert job is not None
+
+    with pytest.raises(ValueError) as excinfo:
+        run_chat_agent_job(job.payload)
+    
+    assert "LLM provider failed" in str(excinfo.value)
+    assert "MAX_TOKENS" in str(excinfo.value)
 
 
 def test_delete_conversation_cascade_and_security(
@@ -217,7 +353,7 @@ def test_delete_conversation_cascade_and_security(
         headers=auth_headers,
         json={"content": "trigger tool call"},
     )
-    assert user_msg.status_code == 201
+    assert user_msg.status_code == 202
     
     messages_before = db_session.scalars(select(MessageModel).where(MessageModel.conversation_id == conversation_id)).all()
     assert len(messages_before) > 0
@@ -276,8 +412,15 @@ class GenericErrorLLMProvider:
 def test_send_message_returns_500_on_generic_runtime_error(
     client: TestClient,
     auth_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    db_session: Session,
 ) -> None:
-    app.dependency_overrides[get_llm_provider] = lambda: GenericErrorLLMProvider()
+    from app.jobs.queue import JobQueue
+    from app.jobs.chat_agent import run_chat_agent_job
+
+    fake_queue = JobQueue("http://fake", "fake")
+    fake_queue.client = FakeUpstashRedisClient()
+    monkeypatch.setattr("app.api.routes.conversations.build_job_queue", lambda: fake_queue)
 
     create = client.post("/conversations", headers=auth_headers, json={"title": "Error session"})
     conversation_id = create.json()["id"]
@@ -287,9 +430,21 @@ def test_send_message_returns_500_on_generic_runtime_error(
         headers=auth_headers,
         json={"content": "Hello error"},
     )
+    assert send.status_code == 202
+    job_id = send.json()["job_id"]
 
-    assert send.status_code == 500
-    assert "unexpected server error" in send.json()["detail"]
+    monkeypatch.setattr("app.jobs.chat_agent.build_provider", lambda **kw: GenericErrorLLMProvider())
+    monkeypatch.setattr("app.jobs.chat_agent.GeminiEmbeddingProvider", lambda **kw: FakeEmbeddingProvider())
+    monkeypatch.setattr("app.jobs.chat_agent.SessionLocal", lambda: db_session)
+    monkeypatch.setattr("app.jobs.chat_agent.get_engine", lambda: db_session.bind)
+
+    job = fake_queue.dequeue("chat_agent_run")
+    assert job is not None
+
+    with pytest.raises(ValueError) as excinfo:
+        run_chat_agent_job(job.payload)
+    
+    assert "An unexpected server error occurred." in str(excinfo.value)
 
 
 

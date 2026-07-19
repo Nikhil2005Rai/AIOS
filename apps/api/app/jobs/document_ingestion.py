@@ -1,4 +1,4 @@
-from app.auth.gemini_key_resolver import resolve_gemini_api_key
+from app.auth.provider_resolution import resolve_gemini_api_key
 from app.core.config import settings
 from app.db import SessionLocal, get_engine
 from app.infrastructure.models import UserModel

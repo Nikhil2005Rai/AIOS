@@ -460,25 +460,73 @@ export const ChatProvider = ({ children }: { children: React.ReactNode }) => {
     if (event) event.preventDefault();
     const content = textOverride ?? draft.trim();
     const targetId = conversationIdOverride ?? activeConversationId;
-    if (!targetId || !content) {
-      return;
-    }
+    if (!targetId || !content) return;
+
     setIsSending(true);
     setDraft("");
     setStatus("Planner is working");
+
     try {
-      const response = await api<{ user_message: Message; assistant_message: Message }>(
+      const response = await api<{ job_id: string; status: string; user_message: Message }>(
         `/conversations/${targetId}/messages`,
-        {
-          method: "POST",
-          body: JSON.stringify({ content }),
-        },
+        { method: "POST", body: JSON.stringify({ content }) },
       );
+
       if (targetId === activeConversationId || (!activeConversationId && targetId)) {
-        setMessages((current) => [...current, response.user_message, response.assistant_message]);
+        setMessages((current) => [...current, response.user_message]);
       }
-      setStatus(response.assistant_message.tool_name ? `Used ${response.assistant_message.tool_name}` : "Ready");
-      void loadConversations(token as string);
+
+      const jobId = response.job_id;
+      const startTime = Date.now();
+      const timeoutMs = 60000; // 60 seconds
+
+      const poll = async () => {
+        if (Date.now() - startTime > timeoutMs) {
+          setStatus("Planner timed out after 60 seconds");
+          setIsSending(false);
+          return;
+        }
+        try {
+          const job = await api<{
+            job_id: string;
+            status: string;
+            assistant_message: Message | null;
+            error: string | null;
+          }>(`/conversations/${targetId}/messages/jobs/${jobId}`);
+
+          if (job.status === "succeeded" && job.assistant_message) {
+            if (targetId === activeConversationId) {
+              setMessages((current) => [...current, job.assistant_message as Message]);
+            }
+            setStatus(job.assistant_message.tool_name ? `Used ${job.assistant_message.tool_name}` : "Ready");
+            setIsSending(false);
+            void loadConversations(token as string);
+          } else if (job.status === "failed") {
+            const message = job.error ?? "Planner failed";
+            setStatus(message);
+            if (targetId === activeConversationId) {
+              setMessages((current) => [
+                ...current,
+                {
+                  id: `local-error-${Date.now()}`,
+                  role: "assistant",
+                  content: `Request failed: ${message}`,
+                  tool_name: null,
+                  created_at: new Date().toISOString(),
+                },
+              ]);
+            }
+            setIsSending(false);
+          } else {
+            setTimeout(poll, 1000);
+          }
+        } catch (pollError) {
+          setStatus(pollError instanceof Error ? pollError.message : "Polling failed");
+          setIsSending(false);
+        }
+      };
+
+      setTimeout(poll, 1000);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Planner failed";
       setStatus(message);
@@ -492,7 +540,6 @@ export const ChatProvider = ({ children }: { children: React.ReactNode }) => {
           created_at: new Date().toISOString(),
         },
       ]);
-    } finally {
       setIsSending(false);
     }
   }

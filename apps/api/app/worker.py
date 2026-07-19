@@ -2,6 +2,7 @@ import logging
 import time
 
 from app.jobs.document_ingestion import run_document_ingestion_job
+from app.jobs.chat_agent import run_chat_agent_job
 from app.jobs.entities import JobStatus
 from app.jobs.queue import build_job_queue
 from app.core.config import settings
@@ -11,6 +12,7 @@ logger = logging.getLogger("worker")
 
 JOB_HANDLERS = {
     "document_ingestion": run_document_ingestion_job,
+    "chat_agent_run": run_chat_agent_job,
 }
 
 

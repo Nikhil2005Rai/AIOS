@@ -186,3 +186,160 @@ def test_run_document_ingestion_job_corrupted_key(db_session: Session, monkeypat
 
     with pytest.raises(ValueError, match="Stored API key could not be decrypted"):
         run_document_ingestion_job(payload)
+
+
+class ScriptedGraphProvider:
+    def __init__(self, responses: list) -> None:
+        self.responses = responses
+        self.calls = []
+
+    def generate(self, messages, tools = None):
+        self.calls.append((messages, tools))
+        return self.responses.pop(0)
+
+
+def test_run_chat_agent_job_direct_answer(db_session: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.jobs.chat_agent import run_chat_agent_job
+    from app.infrastructure.models import UserModel
+    from app.auth.api_key_repository import UserApiKeyRepository
+    from app.auth.encryption import EncryptionService
+    from app.conversations.repository import ConversationRepository
+    from app.providers.base import LLMResponse
+
+    user = UserModel(id="chat-user-1", email="chat@example.com", password_hash="hash")
+    db_session.add(user)
+    db_session.commit()
+
+    UserApiKeyRepository(db_session).upsert(
+        user_id="chat-user-1",
+        provider="gemini",
+        encrypted_key=EncryptionService().encrypt("fake-key")
+    )
+
+    repo = ConversationRepository(db_session)
+    conv = repo.create(user_id="chat-user-1", title="Direct Chat")
+    user_msg = repo.add_message(conv.id, "user", "Say hello directly")
+
+    scripted_provider = ScriptedGraphProvider([LLMResponse(content="ANSWER: Direct graph response")])
+
+    monkeypatch.setattr("app.jobs.chat_agent.build_provider", lambda **kw: scripted_provider)
+    monkeypatch.setattr("app.jobs.chat_agent.GeminiEmbeddingProvider", lambda **kw: FakeEmbeddingProvider())
+    monkeypatch.setattr("app.jobs.chat_agent.SessionLocal", lambda: db_session)
+    monkeypatch.setattr("app.jobs.chat_agent.get_engine", lambda: db_session.bind)
+
+    payload = {
+        "conversation_id": conv.id,
+        "user_id": "chat-user-1",
+        "user_message_id": user_msg.id,
+        "content": "Say hello directly"
+    }
+
+    result = run_chat_agent_job(payload)
+    assert result["role"] == "assistant"
+    assert result["content"] == "Direct graph response"
+
+    messages = repo.list_messages(conv.id)
+    assert len(messages) == 2
+    assert messages[1].role == "assistant"
+    assert messages[1].content == "Direct graph response"
+
+
+def test_run_chat_agent_job_routes_to_knowledge(db_session: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.jobs.chat_agent import run_chat_agent_job
+    from app.infrastructure.models import UserModel
+    from app.auth.api_key_repository import UserApiKeyRepository
+    from app.auth.encryption import EncryptionService
+    from app.conversations.repository import ConversationRepository
+    from app.providers.base import LLMResponse
+    from app.domain.entities import RetrievedChunk
+
+    user = UserModel(id="chat-user-2", email="chat2@example.com", password_hash="hash")
+    db_session.add(user)
+    db_session.commit()
+
+    UserApiKeyRepository(db_session).upsert(
+        user_id="chat-user-2",
+        provider="gemini",
+        encrypted_key=EncryptionService().encrypt("fake-key")
+    )
+
+    repo = ConversationRepository(db_session)
+    conv = repo.create(user_id="chat-user-2", title="Knowledge Chat")
+    user_msg = repo.add_message(conv.id, "user", "Search my knowledge")
+
+    scripted_provider = ScriptedGraphProvider([
+        LLMResponse(content="ROUTE: knowledge"),
+        LLMResponse(content="Grounded answer from chunk")
+    ])
+
+    monkeypatch.setattr("app.jobs.chat_agent.build_provider", lambda **kw: scripted_provider)
+    monkeypatch.setattr("app.jobs.chat_agent.GeminiEmbeddingProvider", lambda **kw: FakeEmbeddingProvider())
+    monkeypatch.setattr("app.jobs.chat_agent.SessionLocal", lambda: db_session)
+    monkeypatch.setattr("app.jobs.chat_agent.get_engine", lambda: db_session.bind)
+
+    class ScriptedRetrievalRepository:
+        def __init__(self, session):
+            pass
+        def search(self, user_id: str, embedding: list[float], limit: int = 4) -> list[RetrievedChunk]:
+            return [
+                RetrievedChunk(id="test-chunk-1", document_id="doc-1", content="grounded details", score=0.99)
+            ]
+        def create(self, conversation_id: str, message_id: str, agent_name: str, query: str, chunk_ids: list[str], scores: list[float]):
+            pass
+
+    monkeypatch.setattr("app.jobs.chat_agent.RetrievalRepository", ScriptedRetrievalRepository)
+
+    payload = {
+        "conversation_id": conv.id,
+        "user_id": "chat-user-2",
+        "user_message_id": user_msg.id,
+        "content": "Search my knowledge"
+    }
+
+    result = run_chat_agent_job(payload)
+    assert result["role"] == "assistant"
+    assert result["content"] == "Grounded answer from chunk"
+
+
+def test_run_chat_agent_job_generation_failure(db_session: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.jobs.chat_agent import run_chat_agent_job
+    from app.infrastructure.models import UserModel
+    from app.auth.api_key_repository import UserApiKeyRepository
+    from app.auth.encryption import EncryptionService
+    from app.conversations.repository import ConversationRepository
+    from app.providers.base import LLMGenerationError
+
+    user = UserModel(id="chat-user-3", email="chat3@example.com", password_hash="hash")
+    db_session.add(user)
+    db_session.commit()
+
+    UserApiKeyRepository(db_session).upsert(
+        user_id="chat-user-3",
+        provider="gemini",
+        encrypted_key=EncryptionService().encrypt("fake-key")
+    )
+
+    repo = ConversationRepository(db_session)
+    conv = repo.create(user_id="chat-user-3", title="Failure Chat")
+    user_msg = repo.add_message(conv.id, "user", "This should fail")
+
+    class FailingProvider:
+        def __init__(self, **kw):
+            pass
+        def generate(self, *args, **kwargs):
+            raise LLMGenerationError("Upstream LLM timeout")
+
+    monkeypatch.setattr("app.jobs.chat_agent.build_provider", lambda **kw: FailingProvider())
+    monkeypatch.setattr("app.jobs.chat_agent.GeminiEmbeddingProvider", lambda **kw: FakeEmbeddingProvider())
+    monkeypatch.setattr("app.jobs.chat_agent.SessionLocal", lambda: db_session)
+    monkeypatch.setattr("app.jobs.chat_agent.get_engine", lambda: db_session.bind)
+
+    payload = {
+        "conversation_id": conv.id,
+        "user_id": "chat-user-3",
+        "user_message_id": user_msg.id,
+        "content": "This should fail"
+    }
+
+    with pytest.raises(ValueError, match="LLM provider failed: Upstream LLM timeout"):
+        run_chat_agent_job(payload)

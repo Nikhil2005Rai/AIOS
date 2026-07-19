@@ -21,7 +21,7 @@ The backend is structured for clean architecture so later agents, retrieval, cac
 
 ## Agent Graph
 
-The backend uses LangGraph for the current multi-agent flow:
+The backend uses LangGraph for the multi-agent flow. When a user sends a chat message, the agent run is enqueued as a job, and the graph execution runs asynchronously inside the background worker process:
 
 ```text
 user request -> planner node -> direct answer
@@ -108,7 +108,7 @@ npm run dev
 ```
 
 > [!IMPORTANT]
-> `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` are now **required** (not optional) for the document-upload/ingestion feature, as it relies on the Redis-backed job queue. LLM caching remains optional.
+> `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` are now **required** (not optional) for all chat and document-upload/ingestion features, as all agent runs and document ingestion operations rely on the Redis-backed job queue. LLM caching remains optional.
 
 Open `http://localhost:3000`, register a user, create a conversation, and send a planner request. The graph can answer directly or route to Research. Tool calls are recorded in `tool_calls`, including the agent that invoked the tool.
 

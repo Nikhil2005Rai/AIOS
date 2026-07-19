@@ -94,3 +94,16 @@ class DocumentJobStatusResponse(BaseModel):
     status: str
     result: dict | None = None
     error: str | None = None
+
+
+class AgentJobResponse(BaseModel):
+    job_id: str
+    status: str
+    user_message: MessageResponse
+
+
+class AgentJobStatusResponse(BaseModel):
+    job_id: str
+    status: str
+    assistant_message: MessageResponse | None = None
+    error: str | None = None

@@ -9,7 +9,7 @@ from app.agents.registry import AgentRegistry, build_agent_registry
 from app.api.dependencies import get_current_user
 from app.auth.api_key_repository import UserApiKeyRepository
 from app.auth.encryption import EncryptionService
-from app.auth.gemini_key_resolver import resolve_gemini_api_key
+from app.auth.provider_resolution import resolve_active_provider, resolve_gemini_api_key
 from app.cache.redis_client import build_redis_cache
 from app.conversations.caching import CachingConversationRepository
 from app.conversations.repository import ConversationRepository
@@ -29,33 +29,24 @@ def get_llm_provider(
     current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[Session, Depends(get_db_session)],
 ) -> LLMProvider:
-    provider_name, api_key = _resolve_active_provider(current_user, session)
+    try:
+        provider_name, api_key = resolve_active_provider(session, current_user.id, current_user.preferred_provider)
+    except ValueError as exc:
+        user_keys = UserApiKeyRepository(session).list_for_user(current_user.id)
+        failing_provider = "API"
+        if current_user.preferred_provider:
+            failing_provider = current_user.preferred_provider
+        elif len(user_keys) == 1:
+            failing_provider = user_keys[0].provider
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Your stored {failing_provider.upper()} API key could not be decrypted and needs to be re-saved.",
+        ) from exc
     provider = build_provider(api_key=api_key, provider_name=provider_name)
     cache = build_redis_cache()
     if cache is None:
         return provider
     return CachingLLMProvider(inner=provider, cache=cache, user_id=current_user.id)
-
-
-def _resolve_active_provider(current_user: User, session: Session) -> tuple[str, str]:
-    user_keys = UserApiKeyRepository(session).list_for_user(current_user.id)
-    user_key = None
-    if current_user.preferred_provider:
-        user_key = next((key for key in user_keys if key.provider == current_user.preferred_provider), None)
-    elif len(user_keys) == 1:
-        user_key = user_keys[0]
-
-    if user_key is not None:
-        try:
-            decrypted = EncryptionService().decrypt(user_key.encrypted_key)
-        except ValueError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Your stored {user_key.provider.upper()} API key could not be decrypted and needs to be re-saved.",
-            ) from exc
-        return user_key.provider, decrypted
-
-    return settings.llm_provider, settings.llm_api_key
 
 
 def get_embedding_provider(
