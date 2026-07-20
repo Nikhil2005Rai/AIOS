@@ -70,15 +70,15 @@ def test_rate_limit_register_ip_integration(
     fake_cache = FakeRateLimitRedisCache()
     monkeypatch.setattr("app.api.rate_limit_dependencies.build_redis_cache", lambda: fake_cache)
 
-    # /auth/register limit is 3 requests per 3600s
-    for i in range(3):
+    # /auth/register limit is 2 requests per 60s
+    for i in range(2):
         res = client.post("/auth/register", json={"email": f"rate{i}@example.com", "password": "password123"})
         assert res.status_code == 201
 
-    # 4th request should return 429
-    res_4th = client.post("/auth/register", json={"email": "rate_over@example.com", "password": "password123"})
-    assert res_4th.status_code == status.HTTP_429_TOO_MANY_REQUESTS
-    assert res_4th.json()["detail"] == "Rate limit exceeded. Try again in a moment."
+    # 3rd request should return 429
+    res_3rd = client.post("/auth/register", json={"email": "rate_over@example.com", "password": "password123"})
+    assert res_3rd.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+    assert res_3rd.json()["detail"] == "Rate limit exceeded. Try again in a moment."
 
 
 def test_rate_limit_send_message_user_integration(
@@ -105,8 +105,8 @@ def test_rate_limit_send_message_user_integration(
     assert conv_res.status_code == 201
     conv_id = conv_res.json()["id"]
 
-    # send_message limit is 20 requests per 60s
-    for i in range(20):
+    # send_message limit is 2 requests per 60s
+    for i in range(2):
         res = client.post(
             f"/conversations/{conv_id}/messages",
             headers=auth_headers,
@@ -114,11 +114,11 @@ def test_rate_limit_send_message_user_integration(
         )
         assert res.status_code == 202
 
-    # 21st request should return 429
+    # 3rd request should return 429
     res_over = client.post(
         f"/conversations/{conv_id}/messages",
         headers=auth_headers,
-        json={"content": "msg 21"},
+        json={"content": "msg 3"},
     )
     assert res_over.status_code == status.HTTP_429_TOO_MANY_REQUESTS
     assert res_over.json()["detail"] == "Rate limit exceeded. Try again in a moment."

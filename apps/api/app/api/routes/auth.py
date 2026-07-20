@@ -20,7 +20,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
     "/register",
     response_model=TokenResponse,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(rate_limit_by_ip("register", limit=3, window_seconds=3600))],
+    dependencies=[Depends(rate_limit_by_ip("register", limit=2, window_seconds=60))],
 )
 def register(payload: RegisterRequest, session: Annotated[Session, Depends(get_db_session)]) -> TokenResponse:
     users = UserRepository(session)
@@ -35,7 +35,7 @@ def register(payload: RegisterRequest, session: Annotated[Session, Depends(get_d
 @router.post(
     "/login",
     response_model=TokenResponse,
-    dependencies=[Depends(rate_limit_by_ip("login", limit=5, window_seconds=300))],
+    dependencies=[Depends(rate_limit_by_ip("login", limit=2, window_seconds=60))],
 )
 def login(payload: LoginRequest, session: Annotated[Session, Depends(get_db_session)]) -> TokenResponse:
     user = UserRepository(session).get_by_email(payload.email)
