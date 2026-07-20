@@ -21,7 +21,7 @@ router = APIRouter(prefix="/documents", tags=["documents"])
     "",
     response_model=DocumentJobResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    dependencies=[Depends(rate_limit_by_user("document_upload", limit=2, window_seconds=60))],
+    dependencies=[Depends(rate_limit_by_user("document_upload", limit=10, window_seconds=3600))],
 )
 def create_document(
     payload: DocumentCreateRequest,

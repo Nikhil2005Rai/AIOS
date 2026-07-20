@@ -58,7 +58,7 @@ def list_messages(
     "/{conversation_id}/messages",
     response_model=AgentJobResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    dependencies=[Depends(rate_limit_by_user("chat_message", limit=2, window_seconds=60))],
+    dependencies=[Depends(rate_limit_by_user("chat_message", limit=20, window_seconds=60))],
 )
 def send_message(
     conversation_id: str,
