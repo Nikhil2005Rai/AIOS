@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user
+from app.api.rate_limit_dependencies import rate_limit_by_ip
 from app.api.schemas import LoginRequest, RegisterRequest, TokenResponse, UserResponse
 from app.auth.jwt_service import JwtService
 from app.auth.passwords import hash_password, verify_password
@@ -15,7 +16,12 @@ from app.domain.entities import User
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-@router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/register",
+    response_model=TokenResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(rate_limit_by_ip("register", limit=3, window_seconds=3600))],
+)
 def register(payload: RegisterRequest, session: Annotated[Session, Depends(get_db_session)]) -> TokenResponse:
     users = UserRepository(session)
     if users.get_by_email(payload.email):
@@ -26,7 +32,11 @@ def register(payload: RegisterRequest, session: Annotated[Session, Depends(get_d
     return TokenResponse(access_token=token.access_token, token_type=token.token_type)
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.post(
+    "/login",
+    response_model=TokenResponse,
+    dependencies=[Depends(rate_limit_by_ip("login", limit=5, window_seconds=300))],
+)
 def login(payload: LoginRequest, session: Annotated[Session, Depends(get_db_session)]) -> TokenResponse:
     user = UserRepository(session).get_by_email(payload.email)
     if user is None or not verify_password(payload.password, user.password_hash):

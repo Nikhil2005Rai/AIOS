@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from app.api.dependencies import get_current_user
 from app.api.deps_providers import get_conversation_repository
+from app.api.rate_limit_dependencies import rate_limit_by_user
 from app.api.schemas import (
     AgentJobResponse,
     AgentJobStatusResponse,
@@ -53,7 +54,12 @@ def list_messages(
     return [_message_response(message) for message in repo.list_messages(conversation_id)]
 
 
-@router.post("/{conversation_id}/messages", response_model=AgentJobResponse, status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/{conversation_id}/messages",
+    response_model=AgentJobResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(rate_limit_by_user("chat_message", limit=20, window_seconds=60))],
+)
 def send_message(
     conversation_id: str,
     payload: MessageCreateRequest,

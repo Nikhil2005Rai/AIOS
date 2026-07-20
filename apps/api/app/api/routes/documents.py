@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from app.api.dependencies import get_current_user
 from app.api.deps_providers import get_embedding_provider
+from app.api.rate_limit_dependencies import rate_limit_by_user
 from app.api.schemas import DocumentCreateRequest, DocumentJobResponse, DocumentJobStatusResponse, DocumentResponse
 from app.db import get_db_session
 from app.domain.entities import User
@@ -16,7 +17,12 @@ from app.jobs.queue import build_job_queue, JobQueueError
 router = APIRouter(prefix="/documents", tags=["documents"])
 
 
-@router.post("", response_model=DocumentJobResponse, status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "",
+    response_model=DocumentJobResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(rate_limit_by_user("document_upload", limit=10, window_seconds=3600))],
+)
 def create_document(
     payload: DocumentCreateRequest,
     current_user: Annotated[User, Depends(get_current_user)],

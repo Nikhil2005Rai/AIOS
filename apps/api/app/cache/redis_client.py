@@ -32,6 +32,19 @@ class RedisCache:
         except Exception:
             logger.exception("Redis cache delete failed for key %s", key)
 
+    def incr(self, key: str) -> int | None:
+        try:
+            return self.client.incr(key)
+        except Exception:
+            logger.exception("Redis cache incr failed for key %s", key)
+            return None
+
+    def expire(self, key: str, ttl_seconds: int) -> None:
+        try:
+            self.client.expire(key, ttl_seconds)
+        except Exception:
+            logger.exception("Redis cache expire failed for key %s", key)
+
 
 def build_redis_cache() -> RedisCache | None:
     if not settings.upstash_redis_rest_url or not settings.upstash_redis_rest_token:

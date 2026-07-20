@@ -12,6 +12,8 @@ os.environ["ENVIRONMENT"] = "test"
 os.environ["DATABASE_URL"] = "postgresql://test:test@localhost/test"
 os.environ["JWT_SECRET_KEY"] = "test-secret-with-at-least-32-characters"
 os.environ["ENCRYPTION_KEY"] = Fernet.generate_key().decode("utf-8")
+os.environ["UPSTASH_REDIS_REST_URL"] = ""
+os.environ["UPSTASH_REDIS_REST_TOKEN"] = ""
 
 from app.api.deps_providers import get_llm_provider
 from app.db import Base, get_db_session

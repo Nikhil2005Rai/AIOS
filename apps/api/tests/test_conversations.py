@@ -341,9 +341,15 @@ def test_delete_conversation_cascade_and_security(
     client: TestClient,
     auth_headers: dict[str, str],
     db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from app.infrastructure.models import ConversationModel, MessageModel
-    
+    from app.jobs.queue import JobQueue
+
+    fake_queue = JobQueue("http://fake", "fake")
+    fake_queue.client = FakeUpstashRedisClient()
+    monkeypatch.setattr("app.api.routes.conversations.build_job_queue", lambda: fake_queue)
+
     create = client.post("/conversations", headers=auth_headers, json={"title": "Session to Delete"})
     assert create.status_code == 201
     conversation_id = create.json()["id"]
