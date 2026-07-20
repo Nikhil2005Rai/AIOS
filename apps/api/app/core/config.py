@@ -27,7 +27,8 @@ class Settings(BaseSettings):
     embedding_model: str = "gemini-embedding-001"
     embedding_dimensions: int = 768
     frontend_origin: str = "http://localhost:3000"
-    encryption_key: str = ""
+    encryption_key: str = ""       # deprecated single-key fallback, still supported
+    encryption_keys: str = ""      # comma-separated, newest/primary key first
     worker_poll_interval_seconds: float = 2.0
 
 

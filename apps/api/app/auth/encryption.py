@@ -1,35 +1,43 @@
-from cryptography.fernet import Fernet, InvalidToken
+from cryptography.fernet import Fernet, MultiFernet, InvalidToken
 
 from app.core.config import settings
 
 
 class EncryptionService:
-    """Temporary Fernet encryption for BYOK.
+    """Envelope-style key rotation for BYOK using MultiFernet: new encryptions
+    always use the first (primary) key in the list; decryption tries every
+    configured key in order, so old ciphertexts keep working after rotation."""
 
-    Phase 7 security hardening should replace this single server-held key with
-    real KMS/secret-manager backed envelope encryption and rotation.
-    """
+    def __init__(self, keys: list[str] | None = None) -> None:
+        self.keys = keys if keys is not None else self._load_keys()
 
-    def __init__(self, key: str | None = None) -> None:
-        self.key = key if key is not None else settings.encryption_key
+    @staticmethod
+    def _load_keys() -> list[str]:
+        if settings.encryption_keys:
+            parsed = [key.strip() for key in settings.encryption_keys.split(",") if key.strip()]
+            if parsed:
+                return parsed
+        if settings.encryption_key:
+            return [settings.encryption_key]
+        return []
 
     @staticmethod
     def generate_key() -> str:
         return Fernet.generate_key().decode("utf-8")
 
     def encrypt(self, plaintext: str) -> str:
-        return self._fernet().encrypt(plaintext.encode("utf-8")).decode("utf-8")
+        return self._multi_fernet().encrypt(plaintext.encode("utf-8")).decode("utf-8")
 
     def decrypt(self, ciphertext: str) -> str:
         try:
-            return self._fernet().decrypt(ciphertext.encode("utf-8")).decode("utf-8")
+            return self._multi_fernet().decrypt(ciphertext.encode("utf-8")).decode("utf-8")
         except InvalidToken as exc:
             raise ValueError("Stored API key could not be decrypted") from exc
 
-    def _fernet(self) -> Fernet:
-        if not self.key:
+    def _multi_fernet(self) -> MultiFernet:
+        if not self.keys:
             raise RuntimeError(
-                "ENCRYPTION_KEY is required for BYOK. Generate one with: "
+                "ENCRYPTION_KEYS (or ENCRYPTION_KEY) is required for BYOK. Generate one with: "
                 "python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
             )
-        return Fernet(self.key.encode("utf-8"))
+        return MultiFernet([Fernet(key.encode("utf-8")) for key in self.keys])

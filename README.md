@@ -52,17 +52,30 @@ LLM_CACHE_TTL_SECONDS=3600
 CONVERSATION_CACHE_TTL_SECONDS=300
 EMBEDDING_MODEL=gemini-embedding-001
 EMBEDDING_DIMENSIONS=768
-ENCRYPTION_KEY=generate-with-fernet
+ENCRYPTION_KEYS=your-primary-fernet-key
 FRONTEND_ORIGIN=http://localhost:3000
 ```
 
-Generate `ENCRYPTION_KEY` with:
+Generate an encryption key with:
 
 ```powershell
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
 
-BYOK uses Fernet with a single server-held key as a temporary stopgap. Real KMS-backed key management and rotation are a later security hardening item, not part of this local-first phase.
+`ENCRYPTION_KEYS` is a comma-separated list of Fernet keys, newest (primary) first. New encryptions always use the first key; decryption tries every key in order, so old ciphertexts keep working after rotation.
+
+**Key rotation procedure:**
+
+1. Generate a new key with the command above.
+2. Prepend it to `ENCRYPTION_KEYS`, comma-separated: `ENCRYPTION_KEYS=new-key,old-key`
+3. Run the rotation script to re-encrypt all stored API keys: `python -m scripts.rotate_encryption_key`
+4. Only after the script completes, you may remove the old key(s) from `ENCRYPTION_KEYS`.
+
+> [!WARNING]
+> Removing an old key from `ENCRYPTION_KEYS` **before** running the rotation script will make any API key still encrypted with it permanently undecryptable.
+
+> [!NOTE]
+> The legacy `ENCRYPTION_KEY` (singular) setting is still supported as a fallback for anyone who hasn't migrated yet. If `ENCRYPTION_KEYS` is empty, the service falls back to `ENCRYPTION_KEY`.
 
 To switch to Groq:
 
