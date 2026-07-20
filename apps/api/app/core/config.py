@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     encryption_key: str = ""       # deprecated single-key fallback, still supported
     encryption_keys: str = ""      # comma-separated, newest/primary key first
     worker_poll_interval_seconds: float = 2.0
+    log_level: str = "INFO"
 
 
 settings = Settings()

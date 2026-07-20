@@ -5,9 +5,9 @@ from app.jobs.document_ingestion import run_document_ingestion_job
 from app.jobs.chat_agent import run_chat_agent_job
 from app.jobs.entities import JobStatus
 from app.jobs.queue import build_job_queue
+from app.core.logging_config import configure_logging
 from app.core.config import settings
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("worker")
 
 JOB_HANDLERS = {
@@ -17,6 +17,7 @@ JOB_HANDLERS = {
 
 
 def main() -> None:
+    configure_logging(settings.log_level)
     queue = build_job_queue()
     if queue is None:
         raise RuntimeError(
@@ -30,15 +31,16 @@ def main() -> None:
             if job is None:
                 continue
             handled = True
-            logger.info("Running job %s (%s)", job.id, job.job_type)
+            job_logger = logging.LoggerAdapter(logger, {"job_id": job.id})
+            job_logger.info("Running job %s (%s)", job.id, job.job_type)
             queue.update_status(job.id, JobStatus.RUNNING)
             try:
                 result = handler(job.payload)
                 queue.update_status(job.id, JobStatus.SUCCEEDED, result=result)
-                logger.info("Job %s succeeded", job.id)
+                job_logger.info("Job %s succeeded", job.id)
             except Exception as exc:
                 queue.update_status(job.id, JobStatus.FAILED, error=str(exc))
-                logger.exception("Job %s failed", job.id)
+                job_logger.exception("Job %s failed", job.id)
         if not handled:
             time.sleep(settings.worker_poll_interval_seconds)
 
