@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     encryption_keys: str = ""      # comma-separated, newest/primary key first
     worker_poll_interval_seconds: float = 2.0
     log_level: str = "INFO"
+    langchain_tracing_v2: bool = False
+    langchain_api_key: str = ""
+    langchain_project: str = "ai-os"
 
 
 settings = Settings()

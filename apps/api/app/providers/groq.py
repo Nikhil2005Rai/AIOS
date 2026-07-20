@@ -1,6 +1,7 @@
 import json
 
 import httpx
+from langsmith import traceable
 
 from app.providers.base import LLMMessage, LLMProvider, LLMResponse, LLMToolCall, ToolSchema
 
@@ -10,6 +11,7 @@ class GroqProvider(LLMProvider):
         self.api_key = api_key
         self.model = model
 
+    @traceable(name="groq_generate", run_type="llm")
     def generate(self, messages: list[LLMMessage], tools: list[ToolSchema] | None = None) -> LLMResponse:
         if not self.api_key:
             return LLMResponse(

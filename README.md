@@ -91,7 +91,24 @@ Create `apps/web/.env.local`:
 NEXT_PUBLIC_API_URL=http://localhost:8000
 ```
 
-Run the backend with `uv` and a local virtual environment:
+### Optional Tracing (LangSmith)
+
+AI-OS supports distributed tracing via [LangSmith](https://smith.langchain.com) to provide deep visibility into LLM calls, graph execution paths, and tool usage. This is entirely optional.
+
+To enable tracing:
+1. Create a free account at [smith.langchain.com](https://smith.langchain.com).
+2. Generate an API key.
+3. Add the following to your `apps/api/.env`:
+
+```env
+LANGCHAIN_TRACING_V2=true
+LANGCHAIN_API_KEY=your-langsmith-api-key
+LANGCHAIN_PROJECT=ai-os
+```
+
+When enabled, traces will include both LangGraph-level routing decisions and the raw HTTP calls made to Gemini/Groq. If disabled or omitted, the application functions normally with zero side effects.
+
+## Local Development:
 
 ```powershell
 cd apps/api

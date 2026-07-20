@@ -6,6 +6,7 @@ from app.jobs.chat_agent import run_chat_agent_job
 from app.jobs.entities import JobStatus
 from app.jobs.queue import build_job_queue
 from app.core.logging_config import configure_logging
+from app.core.tracing import configure_langsmith
 from app.core.config import settings
 
 logger = logging.getLogger("worker")
@@ -18,6 +19,7 @@ JOB_HANDLERS = {
 
 def main() -> None:
     configure_logging(settings.log_level)
+    configure_langsmith()
     queue = build_job_queue()
     if queue is None:
         raise RuntimeError(

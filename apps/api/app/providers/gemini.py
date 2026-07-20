@@ -3,6 +3,7 @@ import logging
 import time
 
 import httpx
+from langsmith import traceable
 
 from app.core.config import settings
 from app.providers.base import LLMGenerationError, LLMMessage, LLMProvider, LLMResponse, LLMToolCall, ToolSchema
@@ -23,6 +24,7 @@ class GeminiProvider(LLMProvider):
         self.model = model
         self.max_output_tokens = max_output_tokens if max_output_tokens is not None else settings.llm_max_output_tokens
 
+    @traceable(name="gemini_generate", run_type="llm")
     def generate(self, messages: list[LLMMessage], tools: list[ToolSchema] | None = None) -> LLMResponse:
         if not self.api_key:
             return LLMResponse(
