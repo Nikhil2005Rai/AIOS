@@ -79,8 +79,6 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
 
   const { data: session } = authClient.useSession();
 
-  const activeConv = conversations.find((c) => c.id === activeConversationId);
-
   const startResizing = (e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
     const startX = e.clientX;
@@ -280,22 +278,6 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
                 </button>
               )}
               <span className="model-selector">{activeModelLabel}</span>
-              {activeConv && (
-                <div className="header-chat-title-capsule">
-                  <span className="header-chat-title-text">{activeConv.title}</span>
-                  <button
-                    type="button"
-                    className="header-chat-title-edit"
-                    title="Rename Chat"
-                    onClick={() => {
-                      setEditingConversationId(activeConv.id);
-                      setEditingTitle(activeConv.title);
-                    }}
-                  >
-                    <Edit2 size={12} />
-                  </button>
-                </div>
-              )}
             </div>
             <div className="header-right">
               {status !== "Ready" && <p className={`status ${status.toLowerCase().includes("fail") || status.toLowerCase().includes("error") ? "error" : ""}`}>{status}</p>}

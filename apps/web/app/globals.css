@@ -1471,41 +1471,6 @@ button:disabled {
   color: #ffffff !important;
   font-weight: 600;
 }
-
-/* Header Chat Title Capsule */
-.header-chat-title-capsule {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: #1e293b;
-  background: #f1f5f9;
-  padding: 4px 10px;
-  border-radius: 6px;
-  border: 1px solid #cbd5e1;
-  max-width: 220px;
-}
-.header-chat-title-text {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.header-chat-title-edit {
-  background: transparent;
-  border: 0;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  padding: 2px;
-  color: #64748b;
-  border-radius: 4px;
-  transition: color 0.15s ease, background 0.15s ease;
-}
-.header-chat-title-edit:hover {
-  color: #0f172a;
-  background: #e2e8f0;
-}
 .profile-welcome {
   font-size: 0.72rem;
   color: rgba(255, 255, 255, 0.5);
