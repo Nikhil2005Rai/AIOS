@@ -38,13 +38,11 @@ export default function AuthPage() {
           fetchOptions: {
             onSuccess: () => {
               const match = document.cookie.match(
-                new RegExp("(^| )better-auth\\.session_token=([^;]+)")
+                new RegExp("(^| )(?:__Secure-)?better-auth\\.session_token=([^;]+)")
               );
-              if (match) {
-                setToken(match[2]);
-                setIsAuthenticated(true);
-                router.replace("/chat");
-              }
+              setToken(match ? match[2] : "authenticated-session");
+              setIsAuthenticated(true);
+              router.replace("/chat");
             },
             onError: (ctx) => {
               setStatus(ctx.error.message || "Failed to login");
@@ -59,13 +57,11 @@ export default function AuthPage() {
           fetchOptions: {
             onSuccess: () => {
               const match = document.cookie.match(
-                new RegExp("(^| )better-auth\\.session_token=([^;]+)")
+                new RegExp("(^| )(?:__Secure-)?better-auth\\.session_token=([^;]+)")
               );
-              if (match) {
-                setToken(match[2]);
-                setIsAuthenticated(true);
-                router.replace("/chat");
-              }
+              setToken(match ? match[2] : "authenticated-session");
+              setIsAuthenticated(true);
+              router.replace("/chat");
             },
             onError: (ctx) => {
               setStatus(ctx.error.message || "Failed to create account");
