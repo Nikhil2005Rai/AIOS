@@ -21,6 +21,7 @@ import {
   Smile,
   SendHorizontal
 } from "lucide-react";
+import { authClient } from "../../lib/auth-client";
 
 export default function ChatLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -62,8 +63,6 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
     setEditingConversationId,
     editingTitle,
     setEditingTitle,
-    email,
-    statusIsError,
     logout,
     activeModelLabel,
     conversationGroups,
@@ -75,6 +74,8 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
     deleteApiKey,
     uploadDocument,
   } = useChat();
+
+  const { data: session } = authClient.useSession();
 
   const startResizing = (e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -237,7 +238,7 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
             </div>
             <div className="profile-details">
               <span className="profile-welcome">Welcome back,</span>
-              <span className="profile-name">{email ? email.split('@')[0] : "Guest"}</span>
+              <span className="profile-name">{session?.user?.email ? session.user.email.split('@')[0] : "User"}</span>
             </div>
           </button>
           <button type="button" className="ghost logout-btn-sidebar" onClick={logout}>
@@ -277,7 +278,7 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
               <span className="model-selector">{activeModelLabel}</span>
             </div>
             <div className="header-right">
-              {status !== "Ready" && <p className={`status ${statusIsError ? "error" : ""}`}>{status}</p>}
+              {status !== "Ready" && <p className={`status ${status.toLowerCase().includes("fail") || status.toLowerCase().includes("error") ? "error" : ""}`}>{status}</p>}
               <div className="header-tools">
                 <span className="header-warning-icon" title="Archimedes Workspace Alert" style={{ display: "flex", alignItems: "center" }}>
                   <AlertTriangle size={14} style={{ color: "#eab308" }} />

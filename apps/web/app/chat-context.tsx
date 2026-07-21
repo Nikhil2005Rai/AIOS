@@ -76,17 +76,8 @@ type ChatContextType = {
   setEditingConversationId: (id: string | null) => void;
   editingTitle: string;
   setEditingTitle: (title: string) => void;
-  email: string;
-  setEmail: (email: string) => void;
-  password: string;
-  setPassword: (password: string) => void;
-  mode: "login" | "register";
-  setMode: (mode: "login" | "register") => void;
-  statusIsError: boolean;
-  
   // Handlers
   api: <T>(endpoint: string, init?: RequestInit) => Promise<T>;
-  handleAuth: (event: FormEvent<HTMLFormElement>) => Promise<void>;
   loadDocuments: (authToken: string) => Promise<void>;
   deleteDocument: (docId: string) => Promise<void>;
   loadConversations: (authToken: string) => Promise<void>;
@@ -164,15 +155,6 @@ export const ChatProvider = ({ children }: { children: React.ReactNode }) => {
   
   const [sidebarWidth, setSidebarWidth] = useState(260);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [mode, setMode] = useState<"login" | "register">("login");
-  
-  const statusIsError = useMemo(() => {
-    const lower = status.toLowerCase();
-    return lower.includes("failed") || lower.includes("error") || lower.includes("could not");
-  }, [status]);
 
   const activeModelLabel = useMemo(() => {
     if (preferredProvider === "gemini") return "Google Gemini (gemini-3.5-flash)";
@@ -209,7 +191,14 @@ export const ChatProvider = ({ children }: { children: React.ReactNode }) => {
 
   useEffect(() => {
     setMounted(true);
-    const savedToken = window.localStorage.getItem("ai-os-token");
+    
+    const getSessionToken = () => {
+      if (typeof document === 'undefined') return null;
+      const match = document.cookie.match(new RegExp('(^| )better-auth\\.session_token=([^;]+)'));
+      return match ? match[2] : null;
+    };
+    
+    const savedToken = getSessionToken();
     if (savedToken) {
       setToken(savedToken);
       
@@ -229,9 +218,6 @@ export const ChatProvider = ({ children }: { children: React.ReactNode }) => {
       })
       .then(dataMe => {
         if (dataMe) {
-          if (dataMe.email) {
-            setEmail(dataMe.email);
-          }
           if (dataMe.preferred_provider) {
             setPreferredProvider(dataMe.preferred_provider);
           }
@@ -286,63 +272,6 @@ export const ChatProvider = ({ children }: { children: React.ReactNode }) => {
       throw new Error(detail || "Request failed");
     }
     return data as T;
-  }
-
-  async function handleAuth(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setStatus("Authenticating");
-    try {
-      const data = await api<{ access_token: string }>(`/auth/${mode}`, {
-        method: "POST",
-        body: JSON.stringify({ email, password }),
-      });
-      window.localStorage.setItem("ai-os-token", data.access_token);
-      setToken(data.access_token);
-      setStatus("Signed in");
-
-      fetch(`${API_URL}/auth/me`, {
-        headers: { Authorization: `Bearer ${data.access_token}` }
-      })
-      .then(res => {
-        if (!res.ok) {
-          if (res.status === 401) logout();
-          throw new Error("Profile request failed");
-        }
-        return res.json();
-      })
-      .then(dataMe => {
-        if (dataMe.email) {
-          setEmail(dataMe.email);
-        }
-        if (dataMe.preferred_provider) {
-          setPreferredProvider(dataMe.preferred_provider);
-        }
-      })
-      .catch(err => console.error("Could not fetch user profile on login", err));
-
-      fetch(`${API_URL}/users/me/api-keys`, {
-        headers: { Authorization: `Bearer ${data.access_token}` }
-      })
-      .then(res => {
-        if (!res.ok) {
-          if (res.status === 401) logout();
-          throw new Error("API keys request failed");
-        }
-        return res.json();
-      })
-      .then(dataKeys => {
-        if (dataKeys.providers) {
-          const list = dataKeys.providers.map((p: any) => p.provider);
-          setConfiguredProviders(list);
-        }
-      })
-      .catch(err => console.error("Could not fetch api keys on login", err));
-
-      void loadDocuments(data.access_token);
-      router.push("/"); // Direct to select workspace screen
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Authentication failed");
-    }
   }
 
   async function loadDocuments(authToken: string) {
@@ -657,13 +586,15 @@ export const ChatProvider = ({ children }: { children: React.ReactNode }) => {
   }
 
   function logout() {
-    window.localStorage.removeItem("ai-os-token");
     setToken(null);
-    setConversations([]);
-    setMessages([]);
-    setEmail("");
-    setPassword("");
-    router.push("/");
+    import("../lib/auth-client").then(({ authClient }) => {
+      authClient.signOut().then(() => {
+        setConversations([]);
+        setActiveConversationId(null);
+        setMessages([]);
+        router.push("/");
+      });
+    });
   }
 
   return (
@@ -713,17 +644,9 @@ export const ChatProvider = ({ children }: { children: React.ReactNode }) => {
         setEditingConversationId,
         editingTitle,
         setEditingTitle,
-        email,
-        setEmail,
-        password,
-        setPassword,
-        mode,
-        setMode,
-        statusIsError,
         
         // Handlers
         api,
-        handleAuth,
         loadDocuments,
         deleteDocument,
         loadConversations,
