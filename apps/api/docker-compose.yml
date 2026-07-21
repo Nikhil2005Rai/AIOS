@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  # PostgreSQL with pgvector extension
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: ai_os_db
+    restart: always
+    environment:
+      POSTGRES_USER: ai_os_user
+      POSTGRES_PASSWORD: ai_os_password
+      POSTGRES_DB: ai_os
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ai_os_user -d ai_os"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # FastAPI Web Server
+  api:
+    build: .
+    container_name: ai_os_api
+    restart: always
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://ai_os_user:ai_os_password@db:5432/ai_os
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: >
+      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+  # Background Worker for document ingestion & chat jobs
+  worker:
+    build: .
+    container_name: ai_os_worker
+    restart: always
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://ai_os_user:ai_os_password@db:5432/ai_os
+    depends_on:
+      db:
+        condition: service_healthy
+    command: python -m app.worker
+
+volumes:
+  postgres_data:
