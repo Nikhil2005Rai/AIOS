@@ -1,5 +1,6 @@
 import pytest
 from cryptography.fernet import Fernet
+from datetime import datetime
 from sqlalchemy.orm import Session
 
 from app.auth.encryption import EncryptionService
@@ -70,7 +71,10 @@ def test_rotation_script_reencrypts_stored_keys(
     user = UserModel(
         id="rotate-user",
         email="rotate@example.com",
-        password_hash="hash",
+        name="Test",
+        emailVerified=True,
+        createdAt=datetime.now(),
+        updatedAt=datetime.now(),
     )
     db_session.add(user)
     db_session.flush()

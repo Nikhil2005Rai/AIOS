@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.config import settings
@@ -14,24 +14,63 @@ def utc_now() -> datetime:
 
 
 class UserModel(Base):
-    __tablename__ = "users"
+    __tablename__ = "user"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    email: Mapped[str] = mapped_column(String(320), unique=True, index=True, nullable=False)
-    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    email: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+    emailVerified: Mapped[bool] = mapped_column("emailVerified", Boolean, nullable=False)
+    image: Mapped[str | None] = mapped_column(Text, nullable=True)
     preferred_provider: Mapped[str | None] = mapped_column(String(80), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    createdAt: Mapped[datetime] = mapped_column("createdAt", DateTime, nullable=False)
+    updatedAt: Mapped[datetime] = mapped_column("updatedAt", DateTime, nullable=False)
 
     conversations: Mapped[list["ConversationModel"]] = relationship(back_populates="user")
     api_keys: Mapped[list["UserApiKeyModel"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     documents: Mapped[list["DocumentModel"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+
+class SessionModel(Base):
+    __tablename__ = "session"
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    expiresAt: Mapped[datetime] = mapped_column("expiresAt", DateTime, nullable=False)
+    token: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+    createdAt: Mapped[datetime] = mapped_column("createdAt", DateTime, nullable=False)
+    updatedAt: Mapped[datetime] = mapped_column("updatedAt", DateTime, nullable=False)
+    ipAddress: Mapped[str | None] = mapped_column("ipAddress", Text, nullable=True)
+    userAgent: Mapped[str | None] = mapped_column("userAgent", Text, nullable=True)
+    userId: Mapped[str] = mapped_column("userId", ForeignKey("user.id", ondelete="CASCADE"), nullable=False)
+
+class AccountModel(Base):
+    __tablename__ = "account"
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    accountId: Mapped[str] = mapped_column("accountId", Text, nullable=False)
+    providerId: Mapped[str] = mapped_column("providerId", Text, nullable=False)
+    userId: Mapped[str] = mapped_column("userId", ForeignKey("user.id", ondelete="CASCADE"), nullable=False)
+    accessToken: Mapped[str | None] = mapped_column("accessToken", Text, nullable=True)
+    refreshToken: Mapped[str | None] = mapped_column("refreshToken", Text, nullable=True)
+    idToken: Mapped[str | None] = mapped_column("idToken", Text, nullable=True)
+    accessTokenExpiresAt: Mapped[datetime | None] = mapped_column("accessTokenExpiresAt", DateTime, nullable=True)
+    refreshTokenExpiresAt: Mapped[datetime | None] = mapped_column("refreshTokenExpiresAt", DateTime, nullable=True)
+    scope: Mapped[str | None] = mapped_column(Text, nullable=True)
+    password: Mapped[str | None] = mapped_column(Text, nullable=True)
+    createdAt: Mapped[datetime] = mapped_column("createdAt", DateTime, nullable=False)
+    updatedAt: Mapped[datetime] = mapped_column("updatedAt", DateTime, nullable=False)
+
+class VerificationModel(Base):
+    __tablename__ = "verification"
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    identifier: Mapped[str] = mapped_column(Text, nullable=False)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
+    expiresAt: Mapped[datetime] = mapped_column("expiresAt", DateTime, nullable=False)
+    createdAt: Mapped[datetime | None] = mapped_column("createdAt", DateTime, nullable=True)
+    updatedAt: Mapped[datetime | None] = mapped_column("updatedAt", DateTime, nullable=True)
 
 
 class ConversationModel(Base):
     __tablename__ = "conversations"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
+    user_id: Mapped[str] = mapped_column(ForeignKey("user.id", ondelete="CASCADE"), index=True, nullable=False)
     title: Mapped[str] = mapped_column(String(160), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
@@ -83,7 +122,7 @@ class UserApiKeyModel(Base):
     __table_args__ = (UniqueConstraint("user_id", "provider", name="uq_user_api_keys_user_provider"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
+    user_id: Mapped[str] = mapped_column(ForeignKey("user.id", ondelete="CASCADE"), index=True, nullable=False)
     provider: Mapped[str] = mapped_column(String(80), nullable=False)
     encrypted_key: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
@@ -95,7 +134,7 @@ class DocumentModel(Base):
     __tablename__ = "documents"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
+    user_id: Mapped[str] = mapped_column(ForeignKey("user.id", ondelete="CASCADE"), index=True, nullable=False)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     source_type: Mapped[str] = mapped_column(String(80), nullable=False, default="pasted_text")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)

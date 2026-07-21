@@ -63,24 +63,6 @@ def test_rate_limiter_fail_open_unit() -> None:
     assert limiter.check("test:bucket:err", limit=2, window_seconds=60) is True
 
 
-def test_rate_limit_register_ip_integration(
-    client: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    fake_cache = FakeRateLimitRedisCache()
-    monkeypatch.setattr("app.api.rate_limit_dependencies.build_redis_cache", lambda: fake_cache)
-
-    # /auth/register limit is 3 requests per 3600s
-    for i in range(3):
-        res = client.post("/auth/register", json={"email": f"rate{i}@example.com", "password": "password123"})
-        assert res.status_code == 201
-
-    # 4th request should return 429
-    res_4th = client.post("/auth/register", json={"email": "rate_over@example.com", "password": "password123"})
-    assert res_4th.status_code == status.HTTP_429_TOO_MANY_REQUESTS
-    assert res_4th.json()["detail"] == "Rate limit exceeded. Try again in a moment."
-
-
 def test_rate_limit_send_message_user_integration(
     client: TestClient,
     auth_headers: dict[str, str],

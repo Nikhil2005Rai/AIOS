@@ -1,4 +1,5 @@
 import pytest
+from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -117,7 +118,7 @@ def test_run_document_ingestion_job(db_session: Session, monkeypatch: pytest.Mon
     from app.auth.api_key_repository import UserApiKeyRepository
     from app.auth.encryption import EncryptionService
 
-    user = UserModel(id="test-user-id", email="test@example.com", password_hash="hash")
+    user = UserModel(id="test-user-id", name="Test", email="test@example.com", emailVerified=True, createdAt=datetime.now(), updatedAt=datetime.now())
     db_session.add(user)
     db_session.commit()
 
@@ -167,7 +168,7 @@ def test_run_document_ingestion_job_corrupted_key(db_session: Session, monkeypat
     from app.infrastructure.models import UserModel
     from app.auth.api_key_repository import UserApiKeyRepository
 
-    user = UserModel(id="test-user-id-corrupt", email="test-corrupt@example.com", password_hash="hash")
+    user = UserModel(id="test-user-id-corrupt", name="Test", email="test-corrupt@example.com", emailVerified=True, createdAt=datetime.now(), updatedAt=datetime.now())
     db_session.add(user)
     db_session.commit()
 
@@ -206,7 +207,7 @@ def test_run_chat_agent_job_direct_answer(db_session: Session, monkeypatch: pyte
     from app.conversations.repository import ConversationRepository
     from app.providers.base import LLMResponse
 
-    user = UserModel(id="chat-user-1", email="chat@example.com", password_hash="hash")
+    user = UserModel(id="chat-user-1", name="Test", email="chat@example.com", emailVerified=True, createdAt=datetime.now(), updatedAt=datetime.now())
     db_session.add(user)
     db_session.commit()
 
@@ -253,7 +254,7 @@ def test_run_chat_agent_job_routes_to_knowledge(db_session: Session, monkeypatch
     from app.providers.base import LLMResponse
     from app.domain.entities import RetrievedChunk
 
-    user = UserModel(id="chat-user-2", email="chat2@example.com", password_hash="hash")
+    user = UserModel(id="chat-user-2", name="Test", email="chat2@example.com", emailVerified=True, createdAt=datetime.now(), updatedAt=datetime.now())
     db_session.add(user)
     db_session.commit()
 
@@ -309,7 +310,7 @@ def test_run_chat_agent_job_generation_failure(db_session: Session, monkeypatch:
     from app.conversations.repository import ConversationRepository
     from app.providers.base import LLMGenerationError
 
-    user = UserModel(id="chat-user-3", email="chat3@example.com", password_hash="hash")
+    user = UserModel(id="chat-user-3", name="Test", email="chat3@example.com", emailVerified=True, createdAt=datetime.now(), updatedAt=datetime.now())
     db_session.add(user)
     db_session.commit()
 

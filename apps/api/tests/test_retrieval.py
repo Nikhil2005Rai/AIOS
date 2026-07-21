@@ -111,6 +111,7 @@ def test_get_document_job_returns_404_for_other_user(
     client: TestClient,
     auth_headers: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
+    create_auth_headers,
 ) -> None:
     fake_queue = JobQueue("http://fake", "fake")
     fake_queue.client = FakeUpstashRedisClient()
@@ -127,9 +128,7 @@ def test_get_document_job_returns_404_for_other_user(
     )
     job_id = response.json()["job_id"]
 
-    other_register = client.post("/auth/register", json={"email": "other_doc_user@example.com", "password": "password123"})
-    other_token = other_register.json()["access_token"]
-    other_headers = {"Authorization": f"Bearer {other_token}"}
+    other_headers = create_auth_headers("other_doc_user@example.com")
 
     bad_get = client.get(f"/documents/jobs/{job_id}", headers=other_headers)
     assert bad_get.status_code == 404
@@ -139,7 +138,8 @@ def test_embedding_provider_requires_gemini_key_when_active_provider_is_groq(
     db_session: Session,
     monkeypatch,
 ) -> None:
-    user = User(id="user-3", email="groq@example.com", password_hash="hash", created_at=None)
+    from datetime import datetime
+    user = User(id="user-3", email="groq@example.com", name="Test", emailVerified=True, createdAt=datetime.now(), updatedAt=datetime.now())
     monkeypatch.setattr(settings, "llm_provider", "groq")
     monkeypatch.setattr(settings, "llm_api_key", "groq-key")
 

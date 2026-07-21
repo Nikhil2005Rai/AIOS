@@ -1,6 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
+from datetime import datetime
 
 from app.auth.api_key_repository import UserApiKeyRepository
 from app.auth.encryption import EncryptionService
@@ -43,8 +44,10 @@ def test_llm_provider_prefers_user_key_over_server_key(
     user = User(
         id="user-1",
         email="user@example.com",
-        password_hash="hash",
-        created_at=None,
+        name="Test",
+        emailVerified=True,
+        createdAt=datetime.now(),
+        updatedAt=datetime.now(),
     )
     monkeypatch.setattr(settings, "llm_provider", "gemini")
     monkeypatch.setattr(settings, "llm_model", "gemini-3.5-flash")
@@ -75,8 +78,10 @@ def test_llm_provider_uses_single_saved_groq_key_when_server_default_is_gemini(
     user = User(
         id="user-2",
         email="groq@example.com",
-        password_hash="hash",
-        created_at=None,
+        name="Test",
+        emailVerified=True,
+        createdAt=datetime.now(),
+        updatedAt=datetime.now(),
     )
     monkeypatch.setattr(settings, "llm_provider", "gemini")
     monkeypatch.setattr(settings, "llm_model", "llama-3.1-8b-instant")
@@ -149,8 +154,10 @@ def test_decryption_failure_raises_400(
     user = User(
         id="user-decrypt-fail",
         email="fail@example.com",
-        password_hash="hash",
-        created_at=None,
+        name="Test",
+        emailVerified=True,
+        createdAt=datetime.now(),
+        updatedAt=datetime.now(),
     )
     UserApiKeyRepository(db_session).upsert(
         user_id=user.id,
@@ -172,8 +179,10 @@ def test_embedding_provider_decryption_failure_raises_400(
     user = User(
         id="user-embed-decrypt-fail",
         email="fail-embed@example.com",
-        password_hash="hash",
-        created_at=None,
+        name="Test",
+        emailVerified=True,
+        createdAt=datetime.now(),
+        updatedAt=datetime.now(),
     )
     UserApiKeyRepository(db_session).upsert(
         user_id=user.id,

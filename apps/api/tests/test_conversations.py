@@ -342,6 +342,7 @@ def test_delete_conversation_cascade_and_security(
     auth_headers: dict[str, str],
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
+    create_auth_headers,
 ) -> None:
     from app.infrastructure.models import ConversationModel, MessageModel
     from app.jobs.queue import JobQueue
@@ -364,9 +365,7 @@ def test_delete_conversation_cascade_and_security(
     messages_before = db_session.scalars(select(MessageModel).where(MessageModel.conversation_id == conversation_id)).all()
     assert len(messages_before) > 0
     
-    other_register = client.post("/auth/register", json={"email": "other@example.com", "password": "password123"})
-    other_token = other_register.json()["access_token"]
-    other_headers = {"Authorization": f"Bearer {other_token}"}
+    other_headers = create_auth_headers("other@example.com")
     
     bad_delete = client.delete(f"/conversations/{conversation_id}", headers=other_headers)
     assert bad_delete.status_code == 404
@@ -385,14 +384,13 @@ def test_rename_conversation(
     client: TestClient,
     auth_headers: dict[str, str],
     db_session: Session,
+    create_auth_headers,
 ) -> None:
     create = client.post("/conversations", headers=auth_headers, json={"title": "Old Name"})
     assert create.status_code == 201
     conversation_id = create.json()["id"]
     
-    other_register = client.post("/auth/register", json={"email": "other2@example.com", "password": "password123"})
-    other_token = other_register.json()["access_token"]
-    other_headers = {"Authorization": f"Bearer {other_token}"}
+    other_headers = create_auth_headers("other2@example.com")
     
     bad_rename = client.put(f"/conversations/{conversation_id}", headers=other_headers, json={"title": "Hacked Title"})
     assert bad_rename.status_code == 404

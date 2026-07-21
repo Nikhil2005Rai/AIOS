@@ -6,8 +6,11 @@ from datetime import datetime
 class User:
     id: str
     email: str
-    password_hash: str
-    created_at: datetime
+    name: str
+    emailVerified: bool
+    createdAt: datetime
+    updatedAt: datetime
+    image: str | None = None
     preferred_provider: str | None = None
 
 
