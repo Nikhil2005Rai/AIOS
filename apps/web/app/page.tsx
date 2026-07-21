@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useChat } from "./chat-context";
 import { useRouter } from "next/navigation";
 import { LogOut, Lock, ArrowRight, Shield, Users, Eye, EyeOff } from "lucide-react";
@@ -17,7 +17,13 @@ export default function RootPage() {
   const [status, setStatus] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
-  if (!mounted) return null;
+  useEffect(() => {
+    if (mounted && !token) {
+      router.replace("/auth");
+    }
+  }, [mounted, token, router]);
+
+  if (!mounted || !token) return null;
 
   async function handleAuth(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();

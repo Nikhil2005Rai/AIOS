@@ -102,7 +102,7 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
 
   useEffect(() => {
     if (mounted && !token) {
-      router.replace("/");
+      router.replace("/auth");
     }
   }, [mounted, token, router]);
 
