@@ -12,7 +12,9 @@ import { useRouter } from "next/navigation";
 import { createApiClient } from "../lib/api-client";
 import { useAuth } from "./auth-context";
 import { useUi } from "./ui-context";
+import { useApiKeys } from "./api-keys-context";
 import { pollJob } from "../hooks/use-job-poller";
+import toast from "react-hot-toast";
 
 export type Conversation = {
   id: string;
@@ -92,8 +94,9 @@ const ConversationContext = createContext<ConversationContextType | undefined>(u
 
 export const ConversationProvider = ({ children }: { children: React.ReactNode }) => {
   const router = useRouter();
-  const { token } = useAuth();
-  const { setStatus, setIsSending, setDraft, draft } = useUi();
+  const { token, isAuthenticated } = useAuth();
+  const { setStatus, setIsSending, setDraft, draft, setIsApiKeyWarningOpen } = useUi();
+  const { configuredProviders } = useApiKeys();
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
@@ -102,10 +105,10 @@ export const ConversationProvider = ({ children }: { children: React.ReactNode }
   const [editingTitle, setEditingTitle] = useState("");
 
   useEffect(() => {
-    if (token) {
+    if (isAuthenticated && token) {
       void loadConversations(token);
     }
-  }, [token]);
+  }, [isAuthenticated, token]);
 
   const conversationGroups = useMemo(() => {
     const today: Conversation[] = [];
@@ -230,6 +233,10 @@ export const ConversationProvider = ({ children }: { children: React.ReactNode }
     conversationIdOverride?: string
   ) {
     if (event) event.preventDefault();
+    if (configuredProviders.length === 0) {
+      setIsApiKeyWarningOpen(true);
+      return;
+    }
     const content = textOverride ?? draft.trim();
     const targetId = conversationIdOverride ?? activeConversationId;
     if (!targetId || !content) return;
@@ -295,6 +302,7 @@ export const ConversationProvider = ({ children }: { children: React.ReactNode }
           onFailed: (error) => {
             const message = error ?? "Planner failed";
             setStatus(message);
+            toast.error(`Error: ${message}`);
             if (targetId === activeConversationId) {
               setMessages((current) => [
                 ...current,
@@ -314,6 +322,7 @@ export const ConversationProvider = ({ children }: { children: React.ReactNode }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Planner failed";
       setStatus(message);
+      toast.error(`Error: ${message}`);
       setMessages((current) => [
         ...current,
         {

@@ -3,7 +3,10 @@
 import React, { createContext, useContext, useState, useEffect, FormEvent } from "react";
 import { createApiClient } from "../lib/api-client";
 import { useAuth } from "./auth-context";
+import { useApiKeys } from "./api-keys-context";
+import { useUi } from "./ui-context";
 import { pollJob } from "../hooks/use-job-poller";
+import toast from "react-hot-toast";
 
 export type DocumentBase = {
   id: string;
@@ -31,7 +34,9 @@ const DocumentsContext = createContext<DocumentsContextType | undefined>(undefin
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export const DocumentsProvider = ({ children }: { children: React.ReactNode }) => {
-  const { token } = useAuth();
+  const { token, isAuthenticated } = useAuth();
+  const { configuredProviders } = useApiKeys();
+  const { setIsApiKeyWarningOpen } = useUi();
 
   const [documents, setDocuments] = useState<DocumentBase[]>([]);
   const [documentTitle, setDocumentTitle] = useState("");
@@ -40,10 +45,10 @@ export const DocumentsProvider = ({ children }: { children: React.ReactNode }) =
   const [isUploadingDocument, setIsUploadingDocument] = useState(false);
 
   useEffect(() => {
-    if (token) {
+    if (isAuthenticated && token) {
       void loadDocuments(token);
     }
-  }, [token]);
+  }, [isAuthenticated, token]);
 
   async function loadDocuments(authToken: string) {
     try {
@@ -71,7 +76,12 @@ export const DocumentsProvider = ({ children }: { children: React.ReactNode }) =
 
   async function uploadDocument(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (configuredProviders.length === 0) {
+      setIsApiKeyWarningOpen(true);
+      return;
+    }
     if (!documentTitle.trim() || !documentContent.trim()) {
+      toast.error("Add a title and content to index.");
       setDocumentStatus("Add a title and content");
       return;
     }
@@ -124,20 +134,24 @@ export const DocumentsProvider = ({ children }: { children: React.ReactNode }) =
           onSucceeded: (result) => {
             setDocumentTitle("");
             setDocumentContent("");
-            setDocumentStatus(
-              `${result?.title ?? "Document"} saved (${result?.chunk_count ?? 0} chunks)`
-            );
+            const msg = `${result?.title ?? "Document"} saved (${result?.chunk_count ?? 0} chunks)`;
+            setDocumentStatus(msg);
+            toast.success(msg);
             setIsUploadingDocument(false);
             if (token) void loadDocuments(token);
           },
           onFailed: (error) => {
-            setDocumentStatus(`Ingestion failed: ${error}`);
+            const msg = `Ingestion failed: ${error}`;
+            setDocumentStatus(msg);
+            toast.error(msg);
             setIsUploadingDocument(false);
           },
         }
       );
     } catch (error) {
-      setDocumentStatus(error instanceof Error ? error.message : "Could not upload knowledge");
+      const msg = error instanceof Error ? error.message : "Could not upload knowledge";
+      setDocumentStatus(msg);
+      toast.error(msg);
       setIsUploadingDocument(false);
     }
   }

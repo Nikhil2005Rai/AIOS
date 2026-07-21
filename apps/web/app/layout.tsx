@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import { Toaster } from "react-hot-toast";
 import { ChatProvider } from "./chat-context";
 
 import "./globals.css";
@@ -21,6 +22,7 @@ export default function RootLayout({
             <body suppressHydrationWarning>
                 <ChatProvider>
                     {children}
+                    <Toaster position="bottom-right" />
                 </ChatProvider>
             </body>
         </html>

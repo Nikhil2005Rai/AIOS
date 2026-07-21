@@ -19,11 +19,11 @@ export type { DocumentBase } from "./contexts/documents-context";
 export const ChatProvider = ({ children }: { children: React.ReactNode }) => (
   <AuthProvider>
     <ApiKeysProvider>
-      <DocumentsProvider>
         <UiProvider>
-          <ConversationProvider>{children}</ConversationProvider>
+          <DocumentsProvider>
+            <ConversationProvider>{children}</ConversationProvider>
+          </DocumentsProvider>
         </UiProvider>
-      </DocumentsProvider>
     </ApiKeysProvider>
   </AuthProvider>
 );

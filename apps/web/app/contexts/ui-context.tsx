@@ -9,6 +9,8 @@ type UiContextType = {
   setIsSidebarCollapsed: (collapsed: boolean) => void;
   isSettingsOpen: boolean;
   setIsSettingsOpen: (open: boolean) => void;
+  isApiKeyWarningOpen: boolean;
+  setIsApiKeyWarningOpen: (open: boolean) => void;
   activeSettingsTab: "general" | "keys" | "knowledge";
   setActiveSettingsTab: (tab: "general" | "keys" | "knowledge") => void;
   draft: string;
@@ -25,6 +27,7 @@ export const UiProvider = ({ children }: { children: React.ReactNode }) => {
   const [sidebarWidth, setSidebarWidth] = useState(260);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isApiKeyWarningOpen, setIsApiKeyWarningOpen] = useState(false);
   const [activeSettingsTab, setActiveSettingsTab] = useState<"general" | "keys" | "knowledge">("keys");
   const [draft, setDraft] = useState("");
   const [status, setStatus] = useState("Ready");
@@ -39,6 +42,8 @@ export const UiProvider = ({ children }: { children: React.ReactNode }) => {
         setIsSidebarCollapsed,
         isSettingsOpen,
         setIsSettingsOpen,
+        isApiKeyWarningOpen,
+        setIsApiKeyWarningOpen,
         activeSettingsTab,
         setActiveSettingsTab,
         draft,

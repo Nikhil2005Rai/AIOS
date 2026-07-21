@@ -37,6 +37,8 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
     setIsSidebarCollapsed,
     isSettingsOpen,
     setIsSettingsOpen,
+    isApiKeyWarningOpen,
+    setIsApiKeyWarningOpen,
     activeSettingsTab,
     setActiveSettingsTab,
     draft,
@@ -562,6 +564,38 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* API Key Warning Modal */}
+      {isApiKeyWarningOpen && (
+        <div className="modal-backdrop" onClick={() => setIsApiKeyWarningOpen(false)}>
+          <div className="modal-content" style={{ maxWidth: 400, padding: 24, textAlign: "center" }} onClick={(e) => e.stopPropagation()}>
+            <AlertTriangle size={48} style={{ color: "#eab308", margin: "0 auto 16px" }} />
+            <h2 style={{ marginBottom: 12 }}>API Key Required</h2>
+            <p style={{ marginBottom: 24, color: "#64748b" }}>
+              You need to configure an API key before you can chat or index documents.
+            </p>
+            <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => setIsApiKeyWarningOpen(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsApiKeyWarningOpen(false);
+                  setActiveSettingsTab("keys");
+                  setIsSettingsOpen(true);
+                }}
+              >
+                Configure Key
+              </button>
             </div>
           </div>
         </div>
