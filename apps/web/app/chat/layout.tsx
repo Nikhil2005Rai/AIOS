@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React, { useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useChat } from "../chat-context";
 import {
@@ -99,6 +99,12 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
     document.addEventListener("mousemove", handleMouseMove);
     document.addEventListener("mouseup", handleMouseUp);
   };
+
+  useEffect(() => {
+    if (mounted && !token) {
+      router.replace("/");
+    }
+  }, [mounted, token, router]);
 
   if (!mounted) return null;
   if (!token) return null;
