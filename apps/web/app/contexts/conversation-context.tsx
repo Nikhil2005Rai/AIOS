@@ -256,6 +256,18 @@ export const ConversationProvider = ({ children }: { children: React.ReactNode }
         body: JSON.stringify({ content }),
       });
 
+      // Auto-set chat title on first message if default
+      const currentConv = conversations.find((c) => c.id === targetId);
+      if (
+        currentConv &&
+        (currentConv.title.toLowerCase().startsWith("new session") ||
+          currentConv.title.toLowerCase().startsWith("new chat") ||
+          messages.length === 0)
+      ) {
+        const autoTitle = content.trim().slice(0, 30) + (content.trim().length > 30 ? "..." : "");
+        void renameConversation(targetId, autoTitle);
+      }
+
       if (targetId === activeConversationId || (!activeConversationId && targetId)) {
         setMessages((current) => [...current, response.user_message]);
       }

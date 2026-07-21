@@ -3,15 +3,16 @@
 import React, { useState } from "react";
 import { useChat } from "./chat-context";
 import { useRouter } from "next/navigation";
-import { LogOut, Lock, ArrowRight, Shield, Users } from "lucide-react";
+import { LogOut, Lock, ArrowRight, Shield, Users, Eye, EyeOff } from "lucide-react";
 import { authClient } from "../lib/auth-client";
 
 export default function RootPage() {
   const router = useRouter();
-  const { token, mounted, setToken, logout } = useChat();
+  const { token, mounted, setToken, logout, setIsAuthenticated } = useChat();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [mode, setMode] = useState<"login" | "register">("login");
   const [status, setStatus] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -30,8 +31,8 @@ export default function RootPage() {
           password,
           fetchOptions: {
             onSuccess: (ctx) => {
-              const match = document.cookie.match(new RegExp('(^| )better-auth\\.session_token=([^;]+)'));
-              if (match) setToken(match[2]);
+              const match = document.cookie.match(new RegExp('(^| )better-auth\.session_token=([^;]+)'));
+              if (match) { setToken(match[2]); setIsAuthenticated(true); }
             },
             onError: (ctx) => {
               setStatus(ctx.error.message || "Failed to login");
@@ -45,8 +46,8 @@ export default function RootPage() {
           name: email.split("@")[0],
           fetchOptions: {
             onSuccess: (ctx) => {
-              const match = document.cookie.match(new RegExp('(^| )better-auth\\.session_token=([^;]+)'));
-              if (match) setToken(match[2]);
+              const match = document.cookie.match(new RegExp('(^| )better-auth\.session_token=([^;]+)'));
+              if (match) { setToken(match[2]); setIsAuthenticated(true); }
             },
             onError: (ctx) => {
               setStatus(ctx.error.message || "Failed to create account");
@@ -102,14 +103,38 @@ export default function RootPage() {
               
               <label>
                 Password
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  placeholder="••••••••"
-                  minLength={mode === "register" ? 8 : 1}
-                  required
-                />
+                <div style={{ position: "relative", width: "100%" }}>
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    placeholder="••••••••"
+                    minLength={mode === "register" ? 8 : 1}
+                    required
+                    style={{ paddingRight: "40px", width: "100%" }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    style={{
+                      position: "absolute",
+                      right: "10px",
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      background: "transparent",
+                      border: "none",
+                      cursor: "pointer",
+                      color: "#64748b",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      padding: "4px",
+                    }}
+                    title={showPassword ? "Hide password" : "Show password"}
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
               </label>
 
               <div className="auth-options">

@@ -1425,27 +1425,86 @@ button:disabled {
   background: rgba(255, 255, 255, 0.08);
 }
 .sidebar .conv-select-btn {
-  color: #ffffff;
+  color: #e2e8f0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  outline: none !important;
+  box-shadow: none !important;
+  font-size: 0.84rem;
+  font-weight: 500;
+}
+.sidebar .conv-select-btn:hover,
+.sidebar .conv-select-btn:focus,
+.sidebar .conv-select-btn:focus-visible,
+.sidebar .conv-select-btn:active {
+  background: transparent !important;
+  outline: none !important;
+  box-shadow: none !important;
+  color: #ffffff !important;
 }
 .sidebar .action-icon-btn {
-  color: rgba(255, 255, 255, 0.6);
+  color: rgba(255, 255, 255, 0.5);
+  background: transparent !important;
+  border: 0 !important;
+  outline: none !important;
 }
 .sidebar .action-icon-btn:hover {
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff !important;
+  background: rgba(255, 255, 255, 0.15) !important;
 }
 .sidebar .conversation-item {
-  border-radius: 6px !important;
-  transition: background-color 0.15s ease !important;
+  border-radius: 8px !important;
+  transition: background-color 0.15s ease, color 0.15s ease !important;
   border: 0 !important;
   box-shadow: none !important;
+  background: transparent !important;
+  margin-bottom: 2px;
 }
 .sidebar .conversation-item:hover {
-  background: rgba(255, 255, 255, 0.06) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
 }
 .sidebar .conversation-item.active {
-  background: rgba(255, 255, 255, 0.12) !important;
-  font-weight: 500;
+  background: rgba(255, 255, 255, 0.15) !important;
+  font-weight: 600;
+}
+.sidebar .conversation-item.active .conv-select-btn {
+  color: #ffffff !important;
+  font-weight: 600;
+}
+
+/* Header Chat Title Capsule */
+.header-chat-title-capsule {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #1e293b;
+  background: #f1f5f9;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid #cbd5e1;
+  max-width: 220px;
+}
+.header-chat-title-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.header-chat-title-edit {
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  padding: 2px;
+  color: #64748b;
+  border-radius: 4px;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.header-chat-title-edit:hover {
+  color: #0f172a;
+  background: #e2e8f0;
 }
 .profile-welcome {
   font-size: 0.72rem;
