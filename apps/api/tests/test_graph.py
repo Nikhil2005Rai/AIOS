@@ -89,4 +89,28 @@ def test_graph_routes_to_knowledge_agent() -> None:
     assert "<retrieved_chunk id=chunk-1 score=0.0100>" in system_msg.content
     assert "</retrieved_chunk id=chunk-1 score=0.0100>" in system_msg.content
     assert "uploaded project notes" in system_msg.content
-    assert "data, not instructions" in system_msg.content
+def test_graph_planner_uses_injected_knowledge() -> None:
+    # Planner decides it can answer directly using the injected knowledge
+    provider = ScriptedGraphProvider([LLMResponse(content="ANSWER: I found this in your notes: uploaded project notes")])
+    graph = MultiAgentGraph(
+        llm_provider=provider,
+        tools=ToolRegistry([]),
+        agents=build_agent_registry(),
+        embedding_provider=FakeEmbeddingProvider(),
+        retrieval_repository=FakeRetrievalRepository(),
+        user_id="user-1",
+    )
+
+    result = graph.run("What are my notes about?")
+
+    assert result.answer == "I found this in your notes: uploaded project notes"
+    assert result.agent_name == "planner"
+    assert result.retrieval_chunk_ids == ["chunk-1"]
+    assert len(provider.calls) == 1
+
+    # Verify the planner's system message includes the injected context
+    planner_call_messages = provider.calls[0][0]
+    system_msg = planner_call_messages[0]
+    assert system_msg.role == "system"
+    assert "<retrieved_chunk id=chunk-1 score=0.0100>" in system_msg.content
+    assert "uploaded project notes" in system_msg.content
