@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     langchain_tracing_v2: bool = False
     langchain_api_key: str = ""
     langchain_project: str = "ai-os"
+    history_summary_trigger_messages: int = 20
+    history_keep_recent_messages: int = 8
+    history_summary_cache_ttl_seconds: int = 3600
 
 
 settings = Settings()

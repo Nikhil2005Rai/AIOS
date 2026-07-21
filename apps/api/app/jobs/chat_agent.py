@@ -15,6 +15,7 @@ from app.providers.caching import CachingLLMProvider
 from app.providers.embeddings.errors import EmbeddingError
 from app.providers.embeddings.gemini import GeminiEmbeddingProvider
 from app.providers.registry import build_provider
+from app.conversations.summarization import build_effective_history
 from app.retrieval.repository import RetrievalRepository
 from app.tools.registry import build_tool_registry
 from app.tools.repository import ToolCallRepository
@@ -70,11 +71,16 @@ def run_chat_agent_job(payload: dict) -> dict:
             user_id=user_id,
         )
 
-        history = [
-            LLMMessage(role=message.role, content=message.content)
-            for message in repo.list_messages(conversation_id)
-            if message.id != user_message_id
+        all_messages = [
+            m for m in repo.list_messages(conversation_id)
+            if m.id != user_message_id
         ]
+        history = build_effective_history(
+            messages=all_messages,
+            llm_provider=llm_provider,
+            cache=cache,
+            conversation_id=conversation_id,
+        )
 
         try:
             result = agent.run(user_input=content, history=history)
