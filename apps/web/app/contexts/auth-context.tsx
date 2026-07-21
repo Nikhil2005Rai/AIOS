@@ -45,16 +45,19 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       .then((res) => {
         if (res.ok) {
           setIsAuthenticated(true);
-        } else {
-          // Token is invalid/expired — clear it
+        } else if (res.status === 401 || res.status === 403) {
+          // Token is explicitly rejected by backend
           setToken(null);
           setIsAuthenticated(false);
+        } else {
+          // Backend returned non-auth status (e.g. 404/500/offline) — keep session
+          setIsAuthenticated(true);
         }
       })
       .catch(() => {
-        // Backend unreachable — don't mark authenticated, but keep token
-        // so UI can retry naturally
-        console.warn("Auth check failed: backend may be starting up");
+        // Backend unreachable — keep session active on frontend
+        setIsAuthenticated(true);
+        console.warn("Auth check failed: backend may be offline");
       });
   }, []);
 
