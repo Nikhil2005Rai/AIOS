@@ -9,6 +9,8 @@ type AuthContextType = {
   token: string | null;
   setToken: (token: string | null) => void;
   mounted: boolean;
+  isAuthenticated: boolean;
+  setIsAuthenticated: (v: boolean) => void;
   logout: () => void;
 };
 
@@ -18,6 +20,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const router = useRouter();
   const [token, setToken] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -31,13 +34,33 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     };
 
     const savedToken = getSessionToken();
-    if (savedToken) {
-      setToken(savedToken);
-    }
+    if (!savedToken) return;
+
+    setToken(savedToken);
+
+    // Verify token is valid before letting downstream contexts load data
+    fetch(`${API_URL}/auth/me`, {
+      headers: { Authorization: `Bearer ${savedToken}` },
+    })
+      .then((res) => {
+        if (res.ok) {
+          setIsAuthenticated(true);
+        } else {
+          // Token is invalid/expired — clear it
+          setToken(null);
+          setIsAuthenticated(false);
+        }
+      })
+      .catch(() => {
+        // Backend unreachable — don't mark authenticated, but keep token
+        // so UI can retry naturally
+        console.warn("Auth check failed: backend may be starting up");
+      });
   }, []);
 
   function logout() {
     setToken(null);
+    setIsAuthenticated(false);
     import("../../lib/auth-client").then(({ authClient }) => {
       authClient.signOut().then(() => {
         router.push("/");
@@ -46,7 +69,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }
 
   return (
-    <AuthContext.Provider value={{ token, setToken, mounted, logout }}>
+    <AuthContext.Provider value={{ token, setToken, mounted, isAuthenticated, setIsAuthenticated, logout }}>
       {children}
     </AuthContext.Provider>
   );

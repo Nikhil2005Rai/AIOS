@@ -26,7 +26,7 @@ const ApiKeysContext = createContext<ApiKeysContextType | undefined>(undefined);
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export const ApiKeysProvider = ({ children }: { children: React.ReactNode }) => {
-  const { token, logout } = useAuth();
+  const { token, logout, isAuthenticated } = useAuth();
 
   const [apiKeyProvider, setApiKeyProvider] = useState<"gemini" | "groq">("gemini");
   const [apiKeyValue, setApiKeyValue] = useState("");
@@ -42,7 +42,7 @@ export const ApiKeysProvider = ({ children }: { children: React.ReactNode }) => 
   })();
 
   useEffect(() => {
-    if (!token) return;
+    if (!isAuthenticated || !token) return;
 
     // Load profile for preferred provider
     fetch(`${API_URL}/auth/me`, {
@@ -80,7 +80,7 @@ export const ApiKeysProvider = ({ children }: { children: React.ReactNode }) => 
         }
       })
       .catch((err) => console.error("Could not fetch api keys", err));
-  }, [token]);
+  }, [isAuthenticated, token]);
 
   async function saveApiKey(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
