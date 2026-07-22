@@ -2,23 +2,22 @@
 
 import React, { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { authClient } from "../lib/auth-client";
+import { useAuth } from "./contexts/auth-context";
 
 export default function RootPage() {
   const router = useRouter();
-  const { data: session, isPending } = authClient.useSession();
+  const { isLoaded, isSignedIn } = useAuth();
 
   useEffect(() => {
-    if (!isPending) {
-      if (session?.user) {
+    if (isLoaded) {
+      if (isSignedIn) {
         router.replace("/chat");
       } else {
         router.replace("/auth");
       }
     }
-  }, [isPending, session, router]);
+  }, [isLoaded, isSignedIn, router]);
 
-  // Root page just redirects — show a brief loading state
   return (
     <main style={{
       display: "flex",

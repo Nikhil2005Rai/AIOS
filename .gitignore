@@ -13,3 +13,5 @@ build/
 coverage/
 *.log
 output.txt
+digest.txt
+tmp-run-logs/

@@ -19,51 +19,18 @@ class UserModel(Base):
     id: Mapped[str] = mapped_column(Text, primary_key=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     email: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
-    emailVerified: Mapped[bool] = mapped_column("emailVerified", Boolean, nullable=False)
+    password_hash: Mapped[str | None] = mapped_column("password_hash", Text, nullable=True)
+    emailVerified: Mapped[bool] = mapped_column("emailVerified", Boolean, nullable=False, default=True)
     image: Mapped[str | None] = mapped_column(Text, nullable=True)
     preferred_provider: Mapped[str | None] = mapped_column(String(80), nullable=True)
-    createdAt: Mapped[datetime] = mapped_column("createdAt", DateTime, nullable=False)
-    updatedAt: Mapped[datetime] = mapped_column("updatedAt", DateTime, nullable=False)
+    createdAt: Mapped[datetime] = mapped_column("createdAt", DateTime, nullable=False, default=utc_now)
+    updatedAt: Mapped[datetime] = mapped_column("updatedAt", DateTime, nullable=False, default=utc_now)
 
     conversations: Mapped[list["ConversationModel"]] = relationship(back_populates="user")
     api_keys: Mapped[list["UserApiKeyModel"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     documents: Mapped[list["DocumentModel"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
-class SessionModel(Base):
-    __tablename__ = "session"
-    id: Mapped[str] = mapped_column(Text, primary_key=True)
-    expiresAt: Mapped[datetime] = mapped_column("expiresAt", DateTime, nullable=False)
-    token: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
-    createdAt: Mapped[datetime] = mapped_column("createdAt", DateTime, nullable=False)
-    updatedAt: Mapped[datetime] = mapped_column("updatedAt", DateTime, nullable=False)
-    ipAddress: Mapped[str | None] = mapped_column("ipAddress", Text, nullable=True)
-    userAgent: Mapped[str | None] = mapped_column("userAgent", Text, nullable=True)
-    userId: Mapped[str] = mapped_column("userId", ForeignKey("user.id", ondelete="CASCADE"), nullable=False)
 
-class AccountModel(Base):
-    __tablename__ = "account"
-    id: Mapped[str] = mapped_column(Text, primary_key=True)
-    accountId: Mapped[str] = mapped_column("accountId", Text, nullable=False)
-    providerId: Mapped[str] = mapped_column("providerId", Text, nullable=False)
-    userId: Mapped[str] = mapped_column("userId", ForeignKey("user.id", ondelete="CASCADE"), nullable=False)
-    accessToken: Mapped[str | None] = mapped_column("accessToken", Text, nullable=True)
-    refreshToken: Mapped[str | None] = mapped_column("refreshToken", Text, nullable=True)
-    idToken: Mapped[str | None] = mapped_column("idToken", Text, nullable=True)
-    accessTokenExpiresAt: Mapped[datetime | None] = mapped_column("accessTokenExpiresAt", DateTime, nullable=True)
-    refreshTokenExpiresAt: Mapped[datetime | None] = mapped_column("refreshTokenExpiresAt", DateTime, nullable=True)
-    scope: Mapped[str | None] = mapped_column(Text, nullable=True)
-    password: Mapped[str | None] = mapped_column(Text, nullable=True)
-    createdAt: Mapped[datetime] = mapped_column("createdAt", DateTime, nullable=False)
-    updatedAt: Mapped[datetime] = mapped_column("updatedAt", DateTime, nullable=False)
-
-class VerificationModel(Base):
-    __tablename__ = "verification"
-    id: Mapped[str] = mapped_column(Text, primary_key=True)
-    identifier: Mapped[str] = mapped_column(Text, nullable=False)
-    value: Mapped[str] = mapped_column(Text, nullable=False)
-    expiresAt: Mapped[datetime] = mapped_column("expiresAt", DateTime, nullable=False)
-    createdAt: Mapped[datetime | None] = mapped_column("createdAt", DateTime, nullable=True)
-    updatedAt: Mapped[datetime | None] = mapped_column("updatedAt", DateTime, nullable=True)
 
 
 class ConversationModel(Base):

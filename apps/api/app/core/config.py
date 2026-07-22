@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     app_name: str = "AI OS API"
     environment: str = "local"
     database_url: str = ""
+    clerk_jwks_url: str = ""
+    clerk_issuer: str = ""
     better_auth_secret: str = "change-me"
     jwt_algorithm: str = "HS256"
     access_token_expiry_minutes: int = 60

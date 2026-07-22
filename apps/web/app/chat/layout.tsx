@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useEffect } from "react";
+import React, { useMemo, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useChat } from "../chat-context";
 import {
@@ -21,12 +21,14 @@ import {
   Smile,
   SendHorizontal
 } from "lucide-react";
-import { authClient } from "../../lib/auth-client";
 import { useAuth } from "../contexts/auth-context";
 
 export default function ChatLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const {
+    isLoaded,
+    isSignedIn,
+    user,
     token,
     mounted,
     conversations,
@@ -78,8 +80,6 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
     uploadDocument,
   } = useChat();
 
-  const { data: session, isPending: sessionPending } = authClient.useSession();
-
   const startResizing = (e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
     const startX = e.clientX;
@@ -102,14 +102,20 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
   };
 
   useEffect(() => {
-    if (!sessionPending && !session?.user) {
+    if (isLoaded && !isSignedIn) {
       router.replace("/auth");
     }
-  }, [sessionPending, session, router]);
+  }, [isLoaded, isSignedIn, router]);
 
-  // Show nothing while session is being fetched or if user is not authenticated
-  if (sessionPending) return null;
-  if (!session?.user) return null;
+  if (!isLoaded) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "var(--background)", color: "var(--text-muted)", fontSize: "14px" }}>
+        Loading workspace...
+      </div>
+    );
+  }
+
+  if (!isSignedIn) return null;
 
   return (
     <main
@@ -248,7 +254,9 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
             </div>
             <div className="profile-details">
               <span className="profile-welcome">Welcome back,</span>
-              <span className="profile-name">{session?.user?.email ? session.user.email.split('@')[0] : "User"}</span>
+              <span className="profile-name">
+                {user?.name || (user?.email ? user.email.split("@")[0] : "User")}
+              </span>
             </div>
           </button>
           <button type="button" className="ghost logout-btn-sidebar" onClick={logout}>

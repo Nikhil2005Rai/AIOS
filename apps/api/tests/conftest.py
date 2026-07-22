@@ -10,17 +10,15 @@ from sqlalchemy.pool import StaticPool
 
 os.environ["ENVIRONMENT"] = "test"
 os.environ["DATABASE_URL"] = "postgresql://test:test@localhost/test"
-os.environ["BETTER_AUTH_SECRET"] = "test-secret-with-at-least-32-characters"
 os.environ["ENCRYPTION_KEY"] = Fernet.generate_key().decode("utf-8")
 os.environ["UPSTASH_REDIS_REST_URL"] = ""
 os.environ["UPSTASH_REDIS_REST_TOKEN"] = ""
 
 from app.api.deps_providers import get_llm_provider
+from app.auth.security import create_access_token
+from app.auth.repository import UserRepository
 from app.db import Base, get_db_session
 from app.infrastructure import models  # noqa: F401
-from app.infrastructure.models import UserModel
-from app.auth.jwt_service import JwtService
-from datetime import datetime
 from app.main import app
 from app.providers.base import LLMMessage, LLMProvider, LLMResponse, ToolSchema
 
@@ -64,18 +62,11 @@ def client(db_session: Session) -> Generator[TestClient, None, None]:
 @pytest.fixture()
 def create_auth_headers(client: TestClient, db_session: Session):
     def _create(email: str = "user@example.com") -> dict[str, str]:
-        user_id = f"test-user-{email}"
-        user = UserModel(
-            id=user_id,
-            name="Test User",
-            email=email,
-            emailVerified=True,
-            createdAt=datetime.now(),
-            updatedAt=datetime.now(),
-        )
-        db_session.add(user)
-        db_session.commit()
-        token = JwtService().issue_access_token(user_id).access_token
+        repo = UserRepository(db_session)
+        user = repo.get_by_email(email)
+        if not user:
+            user = repo.create_user_with_password(email, "hashed_pw", "Test User")
+        token = create_access_token({"sub": user.id, "email": user.email})
         return {"Authorization": f"Bearer {token}"}
     return _create
 

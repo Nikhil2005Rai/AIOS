@@ -24,7 +24,7 @@ type DocumentsContextType = {
   documentStatus: string;
   setDocumentStatus: (status: string) => void;
   isUploadingDocument: boolean;
-  loadDocuments: (authToken: string) => Promise<void>;
+  loadDocuments: (authToken?: string) => Promise<void>;
   deleteDocument: (docId: string) => Promise<void>;
   uploadDocument: (event: FormEvent<HTMLFormElement>) => Promise<void>;
 };
@@ -34,7 +34,7 @@ const DocumentsContext = createContext<DocumentsContextType | undefined>(undefin
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export const DocumentsProvider = ({ children }: { children: React.ReactNode }) => {
-  const { token, isAuthenticated } = useAuth();
+  const { getToken, isAuthenticated } = useAuth();
   const { configuredProviders } = useApiKeys();
   const { setIsApiKeyWarningOpen } = useUi();
 
@@ -45,15 +45,17 @@ export const DocumentsProvider = ({ children }: { children: React.ReactNode }) =
   const [isUploadingDocument, setIsUploadingDocument] = useState(false);
 
   useEffect(() => {
-    if (isAuthenticated && token) {
-      void loadDocuments(token);
+    if (isAuthenticated) {
+      void loadDocuments();
     }
-  }, [isAuthenticated, token]);
+  }, [isAuthenticated]);
 
-  async function loadDocuments(authToken: string) {
+  async function loadDocuments(authToken?: string) {
     try {
+      const bearerToken = authToken ?? (await getToken());
+      if (!bearerToken) return;
       const response = await fetch(`${API_URL}/documents`, {
-        headers: { Authorization: `Bearer ${authToken}` },
+        headers: { Authorization: `Bearer ${bearerToken}` },
       });
       if (response.ok) {
         const data = await response.json();
@@ -65,7 +67,7 @@ export const DocumentsProvider = ({ children }: { children: React.ReactNode }) =
   }
 
   async function deleteDocument(docId: string) {
-    const api = createApiClient(token);
+    const api = createApiClient(getToken);
     try {
       await api(`/documents/${docId}`, { method: "DELETE" });
       setDocuments((current) => current.filter((doc) => doc.id !== docId));
@@ -85,7 +87,7 @@ export const DocumentsProvider = ({ children }: { children: React.ReactNode }) =
       setDocumentStatus("Add a title and content");
       return;
     }
-    const api = createApiClient(token);
+    const api = createApiClient(getToken);
     setIsUploadingDocument(true);
     setDocumentStatus("Queued");
 
@@ -109,7 +111,6 @@ export const DocumentsProvider = ({ children }: { children: React.ReactNode }) =
           const succeeded = job.status === "succeeded";
           const failed = job.status === "failed";
 
-          // Show intermediate statuses as they arrive
           if (job.status === "queued") {
             setDocumentStatus("Queued");
           } else if (job.status === "running") {
@@ -138,7 +139,7 @@ export const DocumentsProvider = ({ children }: { children: React.ReactNode }) =
             setDocumentStatus(msg);
             toast.success(msg);
             setIsUploadingDocument(false);
-            if (token) void loadDocuments(token);
+            void loadDocuments();
           },
           onFailed: (error) => {
             const msg = `Ingestion failed: ${error}`;

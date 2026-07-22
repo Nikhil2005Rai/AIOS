@@ -65,6 +65,23 @@ class RetrievalRepository:
         self.session = session
 
     def search(self, user_id: str, embedding: list[float], limit: int = 4) -> list[RetrievedChunk]:
+        if self.session.bind and self.session.bind.dialect.name == "sqlite":
+            chunks = self.session.scalars(
+                select(DocumentChunkModel)
+                .join(DocumentModel, DocumentChunkModel.document_id == DocumentModel.id)
+                .where(DocumentModel.user_id == user_id)
+                .limit(limit)
+            ).all()
+            return [
+                RetrievedChunk(
+                    id=chunk.id,
+                    document_id=chunk.document_id,
+                    content=chunk.content,
+                    score=0.1,
+                )
+                for chunk in chunks
+            ]
+
         distance = DocumentChunkModel.embedding.cosine_distance(embedding).label("score")
         rows = self.session.execute(
             select(DocumentChunkModel, distance)

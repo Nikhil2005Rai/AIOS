@@ -26,7 +26,7 @@ const ApiKeysContext = createContext<ApiKeysContextType | undefined>(undefined);
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export const ApiKeysProvider = ({ children }: { children: React.ReactNode }) => {
-  const { token, logout, isAuthenticated } = useAuth();
+  const { getToken, logout, isAuthenticated } = useAuth();
 
   const [apiKeyProvider, setApiKeyProvider] = useState<"gemini" | "groq">("gemini");
   const [apiKeyValue, setApiKeyValue] = useState("");
@@ -42,45 +42,58 @@ export const ApiKeysProvider = ({ children }: { children: React.ReactNode }) => 
   })();
 
   useEffect(() => {
-    if (!isAuthenticated || !token) return;
+    if (!isAuthenticated) return;
 
-    // Load profile for preferred provider
-    fetch(`${API_URL}/auth/me`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((res) => {
-        if (!res.ok) {
-          if (res.status === 401) { logout(); return null; }
-          throw new Error("Profile request failed");
-        }
-        return res.json();
-      })
-      .then((data) => {
-        if (data?.preferred_provider) {
-          setPreferredProvider(data.preferred_provider);
-        }
-      })
-      .catch((err) => console.error("Could not fetch user profile", err));
+    let isMounted = true;
 
-    // Load configured API keys
-    fetch(`${API_URL}/users/me/api-keys`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((res) => {
-        if (!res.ok) {
-          if (res.status === 401) { logout(); return null; }
-          throw new Error("API keys request failed");
-        }
-        return res.json();
+    async function loadData() {
+      const currentToken = await getToken();
+      if (!currentToken || !isMounted) return;
+
+      // Load profile for preferred provider
+      fetch(`${API_URL}/auth/me`, {
+        headers: { Authorization: `Bearer ${currentToken}` },
       })
-      .then((data) => {
-        if (data?.providers) {
-          const list = data.providers.map((p: any) => p.provider);
-          setConfiguredProviders(list);
-        }
+        .then((res) => {
+          if (!res.ok) {
+            if (res.status === 401) { logout(); return null; }
+            throw new Error("Profile request failed");
+          }
+          return res.json();
+        })
+        .then((data) => {
+          if (isMounted && data?.preferred_provider) {
+            setPreferredProvider(data.preferred_provider);
+          }
+        })
+        .catch((err) => console.error("Could not fetch user profile", err));
+
+      // Load configured API keys
+      fetch(`${API_URL}/users/me/api-keys`, {
+        headers: { Authorization: `Bearer ${currentToken}` },
       })
-      .catch((err) => console.error("Could not fetch api keys", err));
-  }, [isAuthenticated, token]);
+        .then((res) => {
+          if (!res.ok) {
+            if (res.status === 401) { logout(); return null; }
+            throw new Error("API keys request failed");
+          }
+          return res.json();
+        })
+        .then((data) => {
+          if (isMounted && data?.providers) {
+            const list = data.providers.map((p: any) => p.provider);
+            setConfiguredProviders(list);
+          }
+        })
+        .catch((err) => console.error("Could not fetch api keys", err));
+    }
+
+    void loadData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isAuthenticated, getToken]);
 
   async function saveApiKey(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -88,7 +101,7 @@ export const ApiKeysProvider = ({ children }: { children: React.ReactNode }) => 
       setApiKeyStatus("Enter a key before saving");
       return;
     }
-    const api = createApiClient(token);
+    const api = createApiClient(getToken);
     setIsSavingApiKey(true);
     setApiKeyStatus("Saving key");
     try {
@@ -110,7 +123,7 @@ export const ApiKeysProvider = ({ children }: { children: React.ReactNode }) => 
   }
 
   async function deleteApiKey(providerToDelete: "gemini" | "groq") {
-    const api = createApiClient(token);
+    const api = createApiClient(getToken);
     setIsSavingApiKey(true);
     setApiKeyStatus("Deleting key");
     try {

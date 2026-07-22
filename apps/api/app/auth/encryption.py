@@ -40,4 +40,15 @@ class EncryptionService:
                 "ENCRYPTION_KEYS (or ENCRYPTION_KEY) is required for BYOK. Generate one with: "
                 "python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
             )
-        return MultiFernet([Fernet(key.encode("utf-8")) for key in self.keys])
+        valid_fernets = []
+        for key in self.keys:
+            clean_key = key.strip("'\" \t\r\n")
+            try:
+                valid_fernets.append(Fernet(clean_key.encode("utf-8")))
+            except Exception:
+                continue
+        if not valid_fernets:
+            raise RuntimeError(
+                "Configured ENCRYPTION_KEYS (or ENCRYPTION_KEY) must be 32 url-safe base64-encoded bytes."
+            )
+        return MultiFernet(valid_fernets)

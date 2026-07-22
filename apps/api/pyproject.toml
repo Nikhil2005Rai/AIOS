@@ -20,7 +20,8 @@ dependencies = [
   "langgraph>=0.2,<1.0",
   "cryptography>=43.0,<47.0",
   "pgvector>=0.3,<1.0",
-  "PyJWT>=2.9,<3.0",
+  "PyJWT[crypto]>=2.9,<3.0",
+  "cachetools>=5.3,<6.0",
   "upstash-redis>=1.0,<2.0",
   "langsmith>=0.1,<1.0",
 ]

@@ -78,8 +78,8 @@ type ConversationContextType = {
   editingTitle: string;
   setEditingTitle: (title: string) => void;
   conversationGroups: [string, Conversation[]][];
-  loadConversations: (authToken: string) => Promise<void>;
-  loadMessages: (authToken: string, conversationId: string) => Promise<void>;
+  loadConversations: (authToken?: string) => Promise<void>;
+  loadMessages: (authToken: string | undefined, conversationId: string) => Promise<void>;
   createConversation: () => Promise<Conversation | null>;
   deleteConversation: (conversationId: string) => Promise<void>;
   renameConversation: (conversationId: string, newTitle: string) => Promise<void>;
@@ -94,7 +94,7 @@ const ConversationContext = createContext<ConversationContextType | undefined>(u
 
 export const ConversationProvider = ({ children }: { children: React.ReactNode }) => {
   const router = useRouter();
-  const { token, isAuthenticated } = useAuth();
+  const { getToken, isAuthenticated } = useAuth();
   const { setStatus, setIsSending, setDraft, draft, setIsApiKeyWarningOpen } = useUi();
   const { configuredProviders } = useApiKeys();
 
@@ -105,10 +105,10 @@ export const ConversationProvider = ({ children }: { children: React.ReactNode }
   const [editingTitle, setEditingTitle] = useState("");
 
   useEffect(() => {
-    if (isAuthenticated && token) {
-      void loadConversations(token);
+    if (isAuthenticated) {
+      void loadConversations();
     }
-  }, [isAuthenticated, token]);
+  }, [isAuthenticated]);
 
   const conversationGroups = useMemo(() => {
     const today: Conversation[] = [];
@@ -137,11 +137,13 @@ export const ConversationProvider = ({ children }: { children: React.ReactNode }
     return groups;
   }, [conversations]);
 
-  async function loadConversations(authToken: string) {
+  async function loadConversations(authToken?: string) {
     setStatus("Loading conversations");
     try {
+      const bearerToken = authToken ?? (await getToken());
+      if (!bearerToken) return;
       const response = await fetch(`${API_URL}/conversations`, {
-        headers: { Authorization: `Bearer ${authToken}` },
+        headers: { Authorization: `Bearer ${bearerToken}` },
       });
       const data = (await response.json()) as Conversation[];
       if (!response.ok) {
@@ -154,11 +156,13 @@ export const ConversationProvider = ({ children }: { children: React.ReactNode }
     }
   }
 
-  async function loadMessages(authToken: string, conversationId: string) {
+  async function loadMessages(authToken: string | undefined, conversationId: string) {
     try {
+      const bearerToken = authToken ?? (await getToken());
+      if (!bearerToken) return;
       const response = await fetch(
         `${API_URL}/conversations/${conversationId}/messages`,
-        { headers: { Authorization: `Bearer ${authToken}` } }
+        { headers: { Authorization: `Bearer ${bearerToken}` } }
       );
       const data = (await response.json()) as Message[];
       if (!response.ok) {
@@ -171,7 +175,7 @@ export const ConversationProvider = ({ children }: { children: React.ReactNode }
   }
 
   async function createConversation(): Promise<Conversation | null> {
-    const api = createApiClient(token);
+    const api = createApiClient(getToken);
     setStatus("Creating conversation");
     try {
       const conversation = await api<Conversation>("/conversations", {
@@ -190,7 +194,7 @@ export const ConversationProvider = ({ children }: { children: React.ReactNode }
   }
 
   async function deleteConversation(conversationId: string) {
-    const api = createApiClient(token);
+    const api = createApiClient(getToken);
     setStatus("Deleting conversation");
     try {
       await api(`/conversations/${conversationId}`, { method: "DELETE" });
@@ -208,7 +212,7 @@ export const ConversationProvider = ({ children }: { children: React.ReactNode }
 
   async function renameConversation(conversationId: string, newTitle: string) {
     if (!newTitle.trim()) return;
-    const api = createApiClient(token);
+    const api = createApiClient(getToken);
     setStatus("Renaming");
     try {
       await api(`/conversations/${conversationId}`, {
@@ -241,7 +245,7 @@ export const ConversationProvider = ({ children }: { children: React.ReactNode }
     const targetId = conversationIdOverride ?? activeConversationId;
     if (!targetId || !content) return;
 
-    const api = createApiClient(token);
+    const api = createApiClient(getToken);
     setIsSending(true);
     setDraft("");
     setStatus("Planner is working");
@@ -256,7 +260,6 @@ export const ConversationProvider = ({ children }: { children: React.ReactNode }
         body: JSON.stringify({ content }),
       });
 
-      // Auto-set chat title on first message if default
       const currentConv = conversations.find((c) => c.id === targetId);
       if (
         currentConv &&
@@ -309,7 +312,7 @@ export const ConversationProvider = ({ children }: { children: React.ReactNode }
               assistantMessage.tool_name ? `Used ${assistantMessage.tool_name}` : "Ready"
             );
             setIsSending(false);
-            if (token) void loadConversations(token);
+            void loadConversations();
           },
           onFailed: (error) => {
             const message = error ?? "Planner failed";
