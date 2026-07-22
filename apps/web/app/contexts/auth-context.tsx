@@ -1,9 +1,8 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState } from "react";
 import { useRouter } from "next/navigation";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+import { authClient } from "../../lib/auth-client";
 
 type AuthContextType = {
   token: string | null;
@@ -12,67 +11,48 @@ type AuthContextType = {
   isAuthenticated: boolean;
   setIsAuthenticated: (v: boolean) => void;
   logout: () => void;
+  // Better-Auth native session
+  session: ReturnType<typeof authClient.useSession>["data"];
+  sessionPending: boolean;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const router = useRouter();
-  const [token, setToken] = useState<string | null>(null);
-  const [mounted, setMounted] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  // Better-Auth's own session hook — fetches /api/auth/get-session automatically
+  const { data: session, isPending: sessionPending } = authClient.useSession();
 
-  useEffect(() => {
-    setMounted(true);
+  // Derive auth state directly from Better-Auth session (no cookie parsing!)
+  const isAuthenticated = !!session?.user;
+  const token = session?.session?.token ?? null;
 
-    const getSessionToken = () => {
-      if (typeof document === "undefined") return null;
-      const match = document.cookie.match(
-        new RegExp("(^| )(?:__Secure-)?better-auth\\.session_token=([^;]+)")
-      );
-      return match ? match[2] : null;
-    };
-
-    const savedToken = getSessionToken();
-    if (!savedToken) return;
-
-    setToken(savedToken);
-
-    // Verify token is valid before letting downstream contexts load data
-    fetch(`${API_URL}/auth/me`, {
-      headers: { Authorization: `Bearer ${savedToken}` },
-    })
-      .then((res) => {
-        if (res.ok) {
-          setIsAuthenticated(true);
-        } else if (res.status === 401 || res.status === 403) {
-          // Token is explicitly rejected by backend
-          setToken(null);
-          setIsAuthenticated(false);
-        } else {
-          // Backend returned non-auth status (e.g. 404/500/offline) — keep session
-          setIsAuthenticated(true);
-        }
-      })
-      .catch(() => {
-        // Backend unreachable — keep session active on frontend
-        setIsAuthenticated(true);
-        console.warn("Auth check failed: backend may be offline");
-      });
-  }, []);
+  // These setters are kept for backwards compatibility with existing callers
+  // but they are no-ops now since session is managed by Better-Auth
+  const setToken = (_token: string | null) => {};
+  const setIsAuthenticated = (_v: boolean) => {};
 
   function logout() {
-    setToken(null);
-    setIsAuthenticated(false);
-    import("../../lib/auth-client").then(({ authClient }) => {
-      authClient.signOut().then(() => {
-        router.push("/");
-      });
+    authClient.signOut().then(() => {
+      router.push("/auth");
     });
   }
 
+  const mounted = !sessionPending;
+
   return (
-    <AuthContext.Provider value={{ token, setToken, mounted, isAuthenticated, setIsAuthenticated, logout }}>
+    <AuthContext.Provider
+      value={{
+        token,
+        setToken,
+        mounted,
+        isAuthenticated,
+        setIsAuthenticated,
+        logout,
+        session,
+        sessionPending,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

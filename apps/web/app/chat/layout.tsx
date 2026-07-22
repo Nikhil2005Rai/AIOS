@@ -22,6 +22,7 @@ import {
   SendHorizontal
 } from "lucide-react";
 import { authClient } from "../../lib/auth-client";
+import { useAuth } from "../contexts/auth-context";
 
 export default function ChatLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -77,7 +78,7 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
     uploadDocument,
   } = useChat();
 
-  const { data: session } = authClient.useSession();
+  const { data: session, isPending: sessionPending } = authClient.useSession();
 
   const startResizing = (e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -101,13 +102,14 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
   };
 
   useEffect(() => {
-    if (mounted && !token) {
+    if (!sessionPending && !session?.user) {
       router.replace("/auth");
     }
-  }, [mounted, token, router]);
+  }, [sessionPending, session, router]);
 
-  if (!mounted) return null;
-  if (!token) return null;
+  // Show nothing while session is being fetched or if user is not authenticated
+  if (sessionPending) return null;
+  if (!session?.user) return null;
 
   return (
     <main

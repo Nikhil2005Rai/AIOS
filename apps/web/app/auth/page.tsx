@@ -1,14 +1,13 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { useChat } from "../chat-context";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff } from "lucide-react";
 import { authClient } from "../../lib/auth-client";
 
 export default function AuthPage() {
   const router = useRouter();
-  const { token, mounted, setToken, setIsAuthenticated } = useChat();
+  const { data: session, isPending } = authClient.useSession();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -17,13 +16,21 @@ export default function AuthPage() {
   const [status, setStatus] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
+  // If user is already logged in, redirect to workspace
   useEffect(() => {
-    if (mounted && token) {
+    if (!isPending && session?.user) {
       router.replace("/chat");
     }
-  }, [mounted, token, router]);
+  }, [session, isPending, router]);
 
-  if (!mounted || token) return null;
+  // Show nothing while checking session or if already authenticated
+  if (isPending || session?.user) {
+    return (
+      <main className="auth-shell" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ color: "var(--text-muted)", fontSize: "14px" }}>Loading...</div>
+      </main>
+    );
+  }
 
   async function handleAuth(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -32,42 +39,23 @@ export default function AuthPage() {
 
     try {
       if (mode === "login") {
-        await authClient.signIn.email({
-          email,
-          password,
-          fetchOptions: {
-            onSuccess: () => {
-              const match = document.cookie.match(
-                new RegExp("(^| )(?:__Secure-)?better-auth\\.session_token=([^;]+)")
-              );
-              setToken(match ? match[2] : "authenticated-session");
-              setIsAuthenticated(true);
-              router.replace("/chat");
-            },
-            onError: (ctx) => {
-              setStatus(ctx.error.message || "Failed to login");
-            },
-          },
-        });
+        const { error } = await authClient.signIn.email({ email, password });
+        if (error) {
+          setStatus(error.message || "Failed to login");
+        } else {
+          router.replace("/chat");
+        }
       } else {
-        await authClient.signUp.email({
+        const { error } = await authClient.signUp.email({
           email,
           password,
           name: email.split("@")[0],
-          fetchOptions: {
-            onSuccess: () => {
-              const match = document.cookie.match(
-                new RegExp("(^| )(?:__Secure-)?better-auth\\.session_token=([^;]+)")
-              );
-              setToken(match ? match[2] : "authenticated-session");
-              setIsAuthenticated(true);
-              router.replace("/chat");
-            },
-            onError: (ctx) => {
-              setStatus(ctx.error.message || "Failed to create account");
-            },
-          },
         });
+        if (error) {
+          setStatus(error.message || "Failed to create account");
+        } else {
+          router.replace("/chat");
+        }
       }
     } catch (err: any) {
       setStatus(err.message || "Failed to authenticate");
@@ -246,6 +234,7 @@ export default function AuthPage() {
           <p className="auth-footer-text">
             {mode === "login" ? "Don't Have An Account? " : "Already Have An Account? "}
             <a
+              style={{ cursor: "pointer" }}
               onClick={() => {
                 setMode(mode === "login" ? "register" : "login");
                 setStatus("");
