@@ -27,7 +27,13 @@ def set_api_key(
         supported = ", ".join(sorted(PROVIDERS))
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unsupported provider. Use one of: {supported}.")
 
-    encrypted_key = EncryptionService().encrypt(payload.api_key)
+    try:
+        encrypted_key = EncryptionService().encrypt(payload.api_key)
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Server Encryption Error: {exc}",
+        ) from exc
     api_key = UserApiKeyRepository(session).upsert(
         user_id=current_user.id,
         provider=provider,

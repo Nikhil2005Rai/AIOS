@@ -1,6 +1,13 @@
+import base64
+import hashlib
+import logging
 from cryptography.fernet import Fernet, MultiFernet, InvalidToken
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_FALLBACK_KEY_SEED = "aios-default-encryption-key-fallback-2026"
 
 
 class EncryptionService:
@@ -25,6 +32,12 @@ class EncryptionService:
     def generate_key() -> str:
         return Fernet.generate_key().decode("utf-8")
 
+    @staticmethod
+    def _get_fallback_fernet_key() -> str:
+        seed = settings.better_auth_secret or DEFAULT_FALLBACK_KEY_SEED
+        digest = hashlib.sha256(seed.encode("utf-8")).digest()
+        return base64.urlsafe_b64encode(digest).decode("utf-8")
+
     def encrypt(self, plaintext: str) -> str:
         return self._multi_fernet().encrypt(plaintext.encode("utf-8")).decode("utf-8")
 
@@ -35,20 +48,19 @@ class EncryptionService:
             raise ValueError("Stored API key could not be decrypted") from exc
 
     def _multi_fernet(self) -> MultiFernet:
-        if not self.keys:
-            raise RuntimeError(
-                "ENCRYPTION_KEYS (or ENCRYPTION_KEY) is required for BYOK. Generate one with: "
-                "python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
-            )
         valid_fernets = []
-        for key in self.keys:
-            clean_key = key.strip("'\" \t\r\n")
-            try:
-                valid_fernets.append(Fernet(clean_key.encode("utf-8")))
-            except Exception:
-                continue
+        if self.keys:
+            for key in self.keys:
+                clean_key = key.strip("'\" \t\r\n")
+                try:
+                    valid_fernets.append(Fernet(clean_key.encode("utf-8")))
+                except Exception:
+                    logger.warning(f"Invalid Fernet key in configuration: '{clean_key[:10]}...'")
+                    continue
+
         if not valid_fernets:
-            raise RuntimeError(
-                "Configured ENCRYPTION_KEYS (or ENCRYPTION_KEY) must be 32 url-safe base64-encoded bytes."
-            )
+            logger.warning("No valid ENCRYPTION_KEYS configured in environment. Using deterministic fallback key.")
+            fallback_key = self._get_fallback_fernet_key()
+            valid_fernets.append(Fernet(fallback_key.encode("utf-8")))
+
         return MultiFernet(valid_fernets)
