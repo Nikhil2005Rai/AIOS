@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from app.agents.coding import CodingAgent
 from app.agents.knowledge import KnowledgeAgent
 from app.agents.research import ResearchAgent
 from app.providers.base import LLMProvider
@@ -40,6 +41,7 @@ def build_agent_registry() -> AgentRegistry:
     return AgentRegistry(
         factories={
             ResearchAgent.name: lambda context: ResearchAgent(context.llm_provider, context.tools),
+            CodingAgent.name: lambda context: CodingAgent(context.llm_provider, context.tools),
             KnowledgeAgent.name: lambda context: KnowledgeAgent(
                 llm_provider=context.llm_provider,
                 embedding_provider=context.embedding_provider,

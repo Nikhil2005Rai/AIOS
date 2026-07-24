@@ -60,14 +60,16 @@ class MultiAgentGraph(PlannerAgent):
         graph.add_node("planner", self._planner_node)
         graph.add_node("research", self._research_node)
         graph.add_node("knowledge", self._knowledge_node)
+        graph.add_node("coding", self._coding_node)
         graph.set_entry_point("planner")
         graph.add_conditional_edges(
             "planner",
             self._route_from_planner,
-            {"research": "research", "knowledge": "knowledge", "end": END},
+            {"research": "research", "knowledge": "knowledge", "coding": "coding", "end": END},
         )
         graph.add_edge("research", END)
         graph.add_edge("knowledge", END)
+        graph.add_edge("coding", END)
         return graph.compile()
 
     def _planner_node(self, state: AgentGraphState) -> AgentGraphState:
@@ -99,11 +101,12 @@ class MultiAgentGraph(PlannerAgent):
 
         system_content = (
             "You are the Planner agent in an AI OS monolith. Decide whether the user's request "
-            "needs a specialist. If it asks about the user's uploaded/pasted knowledge, documents, "
-            "notes, or saved context AND the context below is insufficient to fully answer, respond exactly "
-            "with 'ROUTE: knowledge'. If it needs research, current facts, investigation, or tool-supported "
-            "lookup, respond exactly with 'ROUTE: research'. Otherwise answer directly and prefix the answer "
-            "with 'ANSWER:'.\n\n"
+            "needs a specialist. If it asks about writing, debugging, executing, or running code, "
+            "respond exactly with 'ROUTE: coding'. If it asks about the user's uploaded/pasted "
+            "knowledge, documents, notes, or saved context AND the context below is insufficient to "
+            "fully answer, respond exactly with 'ROUTE: knowledge'. If it needs research, current facts, "
+            "investigation, or tool-supported lookup, respond exactly with 'ROUTE: research'. Otherwise "
+            "answer directly and prefix the answer with 'ANSWER:'.\n\n"
         )
         
         if context_str:
@@ -121,6 +124,8 @@ class MultiAgentGraph(PlannerAgent):
         ]
         response = self.llm_provider.generate(messages)
         content = response.content.strip()
+        if content.lower().startswith("route: coding"):
+            return {"route": "coding"}
         if content.lower().startswith("route: knowledge"):
             return {"route": "knowledge"}
         if content.lower().startswith("route: research"):
@@ -138,8 +143,10 @@ class MultiAgentGraph(PlannerAgent):
         }
 
     @staticmethod
-    def _route_from_planner(state: AgentGraphState) -> Literal["research", "knowledge", "end"]:
+    def _route_from_planner(state: AgentGraphState) -> Literal["research", "knowledge", "coding", "end"]:
         route = state.get("route")
+        if route == "coding":
+            return "coding"
         if route == "research":
             return "research"
         if route == "knowledge":
@@ -166,6 +173,17 @@ class MultiAgentGraph(PlannerAgent):
             "retrieval_query": result.retrieval_query,
             "retrieval_chunk_ids": result.retrieval_chunk_ids,
             "retrieval_scores": result.retrieval_scores,
+        }
+
+    def _coding_node(self, state: AgentGraphState) -> AgentGraphState:
+        coding_agent = self.agents.build("coding", self._agent_context())
+        result = coding_agent.run(state["user_input"], history=state.get("history", []))
+        return {
+            "answer": result.answer,
+            "tool_name": result.tool_name,
+            "tool_arguments": result.tool_arguments,
+            "tool_output": result.tool_output,
+            "agent_name": result.agent_name or "coding",
         }
 
     def _agent_context(self) -> AgentBuildContext:

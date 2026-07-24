@@ -1,5 +1,6 @@
 from app.providers.base import ToolSchema
 from app.tools.base import Tool
+from app.tools.code_execution import CodeExecutionTool
 from app.tools.current_time import CurrentTimeTool
 
 
@@ -21,4 +22,4 @@ class ToolRegistry:
 
 
 def build_tool_registry() -> ToolRegistry:
-    return ToolRegistry(tools=[CurrentTimeTool()])
+    return ToolRegistry(tools=[CurrentTimeTool(), CodeExecutionTool()])

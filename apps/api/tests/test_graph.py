@@ -59,6 +59,22 @@ def test_graph_routes_to_research_agent() -> None:
     assert len(provider.calls) == 2
 
 
+def test_graph_routes_to_coding_agent() -> None:
+    provider = ScriptedGraphProvider(
+        [
+            LLMResponse(content="ROUTE: coding"),
+            LLMResponse(content="Here is the python code: print('test')"),
+        ]
+    )
+    graph = MultiAgentGraph(llm_provider=provider, tools=ToolRegistry([]), agents=build_agent_registry())
+
+    result = graph.run("Write a python script to test")
+
+    assert result.answer == "Here is the python code: print('test')"
+    assert result.agent_name == "coding"
+    assert len(provider.calls) == 2
+
+
 def test_graph_routes_to_knowledge_agent() -> None:
     provider = ScriptedGraphProvider(
         [
