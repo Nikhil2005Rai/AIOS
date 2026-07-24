@@ -1,3 +1,4 @@
+import pytest
 from fastapi.testclient import TestClient
 
 
@@ -54,3 +55,16 @@ def test_invalid_token_returns_401(client: TestClient) -> None:
     response = client.get("/auth/me", headers={"Authorization": "Bearer invalid_token_xyz"})
     assert response.status_code == 401
     assert response.json()["detail"] == "Invalid bearer token"
+
+
+def test_jwt_secret_unset_raises_runtime_error(monkeypatch) -> None:
+    import importlib
+    import app.auth.security
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "jwt_secret", "")
+    with pytest.raises(RuntimeError, match="JWT_SECRET is required"):
+        importlib.reload(app.auth.security)
+
+    monkeypatch.setattr(settings, "jwt_secret", "test-secret-do-not-use-in-prod")
+    importlib.reload(app.auth.security)

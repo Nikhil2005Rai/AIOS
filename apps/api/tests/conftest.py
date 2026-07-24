@@ -10,6 +10,7 @@ from sqlalchemy.pool import StaticPool
 
 os.environ["ENVIRONMENT"] = "test"
 os.environ["DATABASE_URL"] = "postgresql://test:test@localhost/test"
+os.environ["JWT_SECRET"] = "test-secret-do-not-use-in-prod"
 os.environ["ENCRYPTION_KEY"] = Fernet.generate_key().decode("utf-8")
 os.environ["UPSTASH_REDIS_REST_URL"] = ""
 os.environ["UPSTASH_REDIS_REST_TOKEN"] = ""

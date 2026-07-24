@@ -8,8 +8,14 @@ import jwt
 from app.core.config import settings
 
 
-JWT_SECRET = getattr(settings, "jwt_secret", None) or os.getenv("JWT_SECRET") or "aios-super-secret-jwt-key-2026"
-JWT_ALGORITHM = "HS256"
+if not settings.jwt_secret:
+    raise RuntimeError(
+        "JWT_SECRET is required. Generate one with: "
+        "python -c \"import secrets; print(secrets.token_urlsafe(64))\" "
+        "and set it in apps/api/.env"
+    )
+JWT_SECRET = settings.jwt_secret
+JWT_ALGORITHM = settings.jwt_algorithm
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
 
 

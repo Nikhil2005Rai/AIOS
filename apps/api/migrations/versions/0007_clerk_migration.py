@@ -23,9 +23,6 @@ def upgrade() -> None:
     op.execute('DROP TABLE IF EXISTS "account" CASCADE;')
     op.execute('DROP TABLE IF EXISTS "verification" CASCADE;')
 
-    # Truncate old user table so new Clerk string IDs (user_2...) populate cleanly
-    op.execute('TRUNCATE TABLE "user" CASCADE;')
-
 
 def downgrade() -> None:
     pass

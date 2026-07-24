@@ -77,21 +77,25 @@ class MultiAgentGraph(PlannerAgent):
         retrieval_scores = []
         
         if self.embedding_provider and self.retrieval_repository and self.user_id:
-            query_embedding = self.embedding_provider.embed([state["user_input"]])[0]
-            chunks = self.retrieval_repository.search(
-                user_id=self.user_id, embedding=query_embedding, limit=2
-            )
-            
-            # Only use chunks if the similarity is very high (cosine distance <= 0.5)
-            relevant_chunks = [chunk for chunk in chunks if chunk.score <= 0.5]
-            if relevant_chunks:
-                from app.providers.prompt_safety import wrap_untrusted_content
-                context_str = "\n\n".join(
-                    wrap_untrusted_content(f"retrieved_chunk id={chunk.id} score={chunk.score:.4f}", chunk.content)
-                    for chunk in relevant_chunks
+            try:
+                query_embedding = self.embedding_provider.embed([state["user_input"]])[0]
+                chunks = self.retrieval_repository.search(
+                    user_id=self.user_id, embedding=query_embedding, limit=2
                 )
-                retrieval_chunk_ids = [chunk.id for chunk in relevant_chunks]
-                retrieval_scores = [chunk.score for chunk in relevant_chunks]
+                
+                # Only use chunks if the similarity is very high (cosine distance <= 0.5)
+                relevant_chunks = [chunk for chunk in chunks if chunk.score <= 0.5]
+                if relevant_chunks:
+                    from app.providers.prompt_safety import wrap_untrusted_content
+                    context_str = "\n\n".join(
+                        wrap_untrusted_content(f"retrieved_chunk id={chunk.id} score={chunk.score:.4f}", chunk.content)
+                        for chunk in relevant_chunks
+                    )
+                    retrieval_chunk_ids = [chunk.id for chunk in relevant_chunks]
+                    retrieval_scores = [chunk.score for chunk in relevant_chunks]
+            except Exception as exc:
+                import logging
+                logging.getLogger(__name__).warning(f"RAG embedding retrieval skipped due to error: {exc}")
 
         system_content = (
             "You are the Planner agent in an AI OS monolith. Decide whether the user's request "

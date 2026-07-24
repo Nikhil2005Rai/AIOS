@@ -15,7 +15,7 @@ The current foundation rules are intentionally strict:
 - JWT auth only
 - Upstash Redis REST caching for LLM responses and conversation histories
 - Redis-backed job queue for asynchronous document ingestion
-- No external vector DB, no Docker, no observability stack
+- No external vector DB, Docker Compose used for AWS EC2 backend deployment (local dev runs bare processes), no complex observability stack
 
 The backend is structured for clean architecture so later agents, retrieval, caching, and external services can be added without a rewrite.
 

@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     clerk_jwks_url: str = ""
     clerk_issuer: str = ""
     better_auth_secret: str = "change-me"
+    jwt_secret: str = ""
     jwt_algorithm: str = "HS256"
     access_token_expiry_minutes: int = 60
     llm_provider: str = "gemini"
