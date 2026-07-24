@@ -168,7 +168,13 @@ export const ConversationProvider = ({ children }: { children: React.ReactNode }
       if (!response.ok) {
         throw new Error("Could not load messages");
       }
-      setMessages(data);
+      setMessages((current) => {
+        const dataIds = new Set(data.map((m) => m.id));
+        const pendingUserMessages = current.filter(
+          (m) => !dataIds.has(m.id) && m.role === "user"
+        );
+        return [...data, ...pendingUserMessages];
+      });
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Could not load messages");
     }
@@ -213,7 +219,6 @@ export const ConversationProvider = ({ children }: { children: React.ReactNode }
   async function renameConversation(conversationId: string, newTitle: string) {
     if (!newTitle.trim()) return;
     const api = createApiClient(getToken);
-    setStatus("Renaming");
     try {
       await api(`/conversations/${conversationId}`, {
         method: "PUT",
@@ -225,9 +230,8 @@ export const ConversationProvider = ({ children }: { children: React.ReactNode }
         )
       );
       setEditingConversationId(null);
-      setStatus("Ready");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Could not rename conversation");
+      // keep silent on auto-rename error
     }
   }
 
@@ -250,6 +254,8 @@ export const ConversationProvider = ({ children }: { children: React.ReactNode }
     setDraft("");
     setStatus("Planner is working");
 
+    let addedUserMessageId: string | null = null;
+
     try {
       const response = await api<{
         job_id: string;
@@ -259,6 +265,8 @@ export const ConversationProvider = ({ children }: { children: React.ReactNode }
         method: "POST",
         body: JSON.stringify({ content }),
       });
+
+      addedUserMessageId = response.user_message.id;
 
       const currentConv = conversations.find((c) => c.id === targetId);
       if (
@@ -271,9 +279,12 @@ export const ConversationProvider = ({ children }: { children: React.ReactNode }
         void renameConversation(targetId, autoTitle);
       }
 
-      if (targetId === activeConversationId || (!activeConversationId && targetId)) {
-        setMessages((current) => [...current, response.user_message]);
-      }
+      setMessages((current) => {
+        if (current.some((m) => m.id === response.user_message.id)) {
+          return current;
+        }
+        return [...current, response.user_message];
+      });
 
       const jobId = response.job_id;
 
@@ -302,12 +313,14 @@ export const ConversationProvider = ({ children }: { children: React.ReactNode }
           timeoutMs: 60000,
           onTimeout: () => {
             setStatus("Planner timed out after 60 seconds");
+            toast.error("Error: Request timed out. Sent message removed.");
+            if (addedUserMessageId) {
+              setMessages((current) => current.filter((m) => m.id !== addedUserMessageId));
+            }
             setIsSending(false);
           },
           onSucceeded: (assistantMessage) => {
-            if (targetId === activeConversationId) {
-              setMessages((current) => [...current, assistantMessage]);
-            }
+            setMessages((current) => [...current, assistantMessage]);
             setStatus(
               assistantMessage.tool_name ? `Used ${assistantMessage.tool_name}` : "Ready"
             );
@@ -318,17 +331,8 @@ export const ConversationProvider = ({ children }: { children: React.ReactNode }
             const message = error ?? "Planner failed";
             setStatus(message);
             toast.error(`Error: ${message}`);
-            if (targetId === activeConversationId) {
-              setMessages((current) => [
-                ...current,
-                {
-                  id: `local-error-${Date.now()}`,
-                  role: "assistant",
-                  content: `Request failed: ${message}`,
-                  tool_name: null,
-                  created_at: new Date().toISOString(),
-                },
-              ]);
+            if (addedUserMessageId) {
+              setMessages((current) => current.filter((m) => m.id !== addedUserMessageId));
             }
             setIsSending(false);
           },
@@ -338,16 +342,9 @@ export const ConversationProvider = ({ children }: { children: React.ReactNode }
       const message = error instanceof Error ? error.message : "Planner failed";
       setStatus(message);
       toast.error(`Error: ${message}`);
-      setMessages((current) => [
-        ...current,
-        {
-          id: `local-error-${Date.now()}`,
-          role: "assistant",
-          content: `Request failed: ${message}`,
-          tool_name: null,
-          created_at: new Date().toISOString(),
-        },
-      ]);
+      if (addedUserMessageId) {
+        setMessages((current) => current.filter((m) => m.id !== addedUserMessageId));
+      }
       setIsSending(false);
     }
   }
